@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#1a1a2e;color:#e0e0e0;overflow:hidden;height:100vh;-webkit-user-select:none;user-select:none}
+.app{background:#1a1a2e;border-radius:18px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* Title bar */
+.titlebar{display:flex;align-items:center;justify-content:flex-end;padding:6px 10px;-webkit-app-region:drag;border-radius:18px 18px 0 0}
+.titlebar button{-webkit-app-region:no-drag;background:none;border:none;color:#555;font-size:16px;cursor:pointer;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.titlebar button:hover{background:#2a2a4e;color:#fff}
+.titlebar .min:hover{background:#444}
+.titlebar .close:hover{background:#e53935;color:#fff}
+
+/* Common */
+.globe{width:55px;height:55px;margin:0 auto 10px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#00d4ff,#003d5c);display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 0 20px rgba(0,212,255,0.25);animation:glow 2.5s ease-in-out infinite alternate}
+@keyframes glow{from{box-shadow:0 0 15px rgba(0,212,255,0.15)}to{box-shadow:0 0 28px rgba(0,212,255,0.45)}}
+h1{font-size:20px;color:#fff;text-align:center}
+h1 span{color:#00d4ff}
+.sub{color:#555;font-size:11px;text-align:center;margin-top:2px}
+
+/* LOGIN */
+#login{flex:1;display:flex;align-items:center;justify-content:center}
+#login .box{text-align:center;width:300px}
+input[type=text]{width:100%;padding:11px;font-size:13px;font-family:Consolas,monospace;background:#12122a;border:1px solid #333;color:#fff;border-radius:10px;text-align:center;outline:none;transition:border .2s;margin-top:18px}
+input[type=text]:focus{border-color:#00d4ff}
+.btn{width:100%;padding:11px;font-size:14px;font-weight:700;background:linear-gradient(135deg,#00d4ff,#0077aa);color:#000;border:none;border-radius:10px;cursor:pointer;margin-top:10px;transition:all .2s}
+.btn:hover{opacity:0.85;transform:translateY(-1px)}
+.btn:disabled{opacity:0.35;transform:none}
+.msg{font-size:15px;font-weight:600;margin-top:12px;min-height:20px}
+.msg.err{color:#f44336}.msg.ok{color:#4CAF50}.msg.inf{color:#00d4ff}
+.ver{color:#555;font-size:12px;margin-top:16px}
+
+/* MAIN */
+#main{flex:1;display:none;flex-direction:column;align-items:center;padding-top:15px}
+.lang-section{margin-top:15px;display:flex;align-items:center;gap:10px}
+.lang-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:1px}
+select{background:#12122a;border:1px solid #333;color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;outline:none;cursor:pointer;min-width:130px}
+select:focus{border-color:#00d4ff}
+.swap-btn{background:none;border:1px solid #333;color:#00d4ff;width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.swap-btn:hover{background:#2a2a4e;border-color:#00d4ff}
+.ctrl{display:flex;align-items:center;gap:15px;margin-top:20px}
+.status{font-size:15px;font-weight:700;color:#fff;padding:7px 22px;border-radius:10px;min-width:100px;text-align:center;transition:background .3s}
+.status.off{background:#e53935}
+.status.on{background:#43a047}
+.tbtn{padding:9px 28px;font-size:13px;font-weight:600;background:#222;color:#fff;border:1px solid #333;border-radius:10px;cursor:pointer;transition:all .2s}
+.tbtn:hover{background:#333;border-color:#00d4ff}
+.info{color:#888;font-size:10px;margin-top:12px}
+.shortcut{color:#666;font-size:10px;margin-top:10px}
+.bottom{margin-top:auto;padding:8px 15px;display:flex;justify-content:space-between;width:100%}
+.bottom span{font-size:9px;color:#666}
+.upd{color:#ffcc00!important;cursor:pointer;text-decoration:underline}
+
+/* Language groups */
+optgroup{background:#12122a;color:#888;font-style:normal;font-size:11px}
+option{background:#12122a;color:#fff;padding:4px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="titlebar">
+    <button class="min" onclick="if(invoke)invoke('minimize_window')">&#8211;</button>
+    <button class="close" onclick="if(invoke)invoke('close_window')">&#10005;</button>
+  </div>
+
+  <!-- LOGIN -->
+  <div id="login">
+    <div class="box">
+      <div class="globe">&#127760;</div>
+      <h1>SL Translator <span>Pro</span></h1>
+      <p class="sub">AI-Powered Chat Translation</p>
+      <input type="text" id="key" placeholder="License Key" autofocus>
+      <select id="mylang" style="width:100%;padding:10px;font-size:13px;background:#12122a;border:1px solid #333;color:#fff;border-radius:8px;text-align:center;margin-top:10px;outline:none">
+        <option value="" disabled selected>Select your language</option>
+        <option value="tr">Turkish</option>
+        <option value="en">English</option>
+        <option value="pt">Portuguese</option>
+        <option value="ja">Japanese</option>
+        <option value="ko">Korean</option>
+        <option value="de">German</option>
+        <option value="fr">French</option>
+        <option value="es">Spanish</option>
+        <option value="ru">Russian</option>
+        <option value="zh">Chinese</option>
+        <option value="ar">Arabic</option>
+        <option value="it">Italian</option>
+        <option value="nl">Dutch</option>
+        <option value="pl">Polish</option>
+        <option value="uk">Ukrainian</option>
+        <option value="da">Danish</option>
+        <option value="hu">Hungarian</option>
+      </select>
+      <button class="btn" id="lbtn" onclick="doLogin()">Activate</button>
+      <div class="msg" id="msg"></div>
+      <div class="ver">v1.0.0</div>
+      <div style="position:fixed;bottom:6px;right:10px;font-size:11px;color:#666;font-style:italic">by kiki</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div class="globe" style="width:45px;height:45px;font-size:20px">&#127760;</div>
+    <h1>SL Translator <span>Pro</span></h1>
+
+    <div class="lang-section">
+      <div style="text-align:center;width:100%">
+        <div class="lang-label" id="writein-label">Write in</div>
+        <select id="tgt" onchange="targetChanged()" style="min-width:200px">
+          <optgroup label="Popular">
+            <option value="en" selected>English</option>
+            <option value="tr">Turkish</option>
+            <option value="pt">Portuguese</option>
+            <option value="ja">Japanese</option>
+            <option value="ko">Korean</option>
+            <option value="de">German</option>
+            <option value="fr">French</option>
+            <option value="es">Spanish</option>
+            <option value="ru">Russian</option>
+            <option value="zh">Chinese</option>
+            <option value="ar">Arabic</option>
+            <option value="it">Italian</option>
+            <option value="nl">Dutch</option>
+            <option value="pl">Polish</option>
+            <option value="uk">Ukrainian</option>
+            <option value="da">Danish</option>
+            <option value="hu">Hungarian</option>
+          </optgroup>
+          <optgroup label="More Languages">
+            <option value="af">Afrikaans</option>
+            <option value="sq">Albanian</option>
+            <option value="am">Amharic</option>
+            <option value="hy">Armenian</option>
+            <option value="az">Azerbaijani</option>
+            <option value="eu">Basque</option>
+            <option value="be">Belarusian</option>
+            <option value="bn">Bengali</option>
+            <option value="bs">Bosnian</option>
+            <option value="bg">Bulgarian</option>
+            <option value="ca">Catalan</option>
+            <option value="hr">Croatian</option>
+            <option value="cs">Czech</option>
+            <option value="et">Estonian</option>
+            <option value="fi">Finnish</option>
+            <option value="ka">Georgian</option>
+            <option value="el">Greek</option>
+            <option value="he">Hebrew</option>
+            <option value="hi">Hindi</option>
+            <option value="id">Indonesian</option>
+            <option value="ga">Irish</option>
+            <option value="lv">Latvian</option>
+            <option value="lt">Lithuanian</option>
+            <option value="mk">Macedonian</option>
+            <option value="ms">Malay</option>
+            <option value="mt">Maltese</option>
+            <option value="mn">Mongolian</option>
+            <option value="ne">Nepali</option>
+            <option value="no">Norwegian</option>
+            <option value="fa">Persian</option>
+            <option value="ro">Romanian</option>
+            <option value="sr">Serbian</option>
+            <option value="sk">Slovak</option>
+            <option value="sl">Slovenian</option>
+            <option value="sw">Swahili</option>
+            <option value="sv">Swedish</option>
+            <option value="ta">Tamil</option>
+            <option value="te">Telugu</option>
+            <option value="th">Thai</option>
+            <option value="ur">Urdu</option>
+            <option value="vi">Vietnamese</option>
+            <option value="cy">Welsh</option>
+          </optgroup>
+        </select>
+      </div>
+    </div>
+
+    <div class="ctrl">
+      <div class="status off" id="st">OFF</div>
+      <button class="tbtn" id="tbtn" onclick="doToggle()">Start</button>
+    </div>
+    <div class="info" id="info"></div>
+    <div style="margin-top:8px"><button onclick="resetLang()" style="background:none;border:none;color:#555;font-size:10px;cursor:pointer;text-decoration:underline" id="changelang-btn">Change language</button></div>
+    <div class="shortcut">Ctrl+Shift+T</div>
+    <div class="bottom">
+      <span>v1.0.0</span>
+      <span class="upd" id="upd"></span>
+      <span style="font-size:8px;color:#666;font-style:italic">by kiki</span>
+    </div>
+  </div>
+</div>
+
+<script>
+let invoke;
+let userLang = 'tr';
+const UI = {
+  tr:{writein:'Yazmak istediginiz dil',start:'Baslat',stop:'Durdur',on:'ACIK',off:'KAPALI',expired:'Lisans suresi doldu',closing:'Kapaniyor',shortcut:'Ctrl+Shift+T',changelang:'Dili degistir'},
+  en:{writein:'Write in',start:'Start',stop:'Stop',on:'ON',off:'OFF',expired:'License expired',closing:'Closing in',shortcut:'Ctrl+Shift+T',changelang:'Change language'},
+  pt:{writein:'Escrever em',start:'Iniciar',stop:'Parar',on:'LIGADO',off:'DESLIGADO',expired:'Licenca expirada',closing:'Fechando em',shortcut:'Ctrl+Shift+T'},
+  ja:{writein:'入力言語',start:'開始',stop:'停止',on:'オン',off:'オフ',expired:'ライセンス期限切れ',closing:'終了まで',shortcut:'Ctrl+Shift+T'},
+  ko:{writein:'입력 언어',start:'시작',stop:'중지',on:'켜짐',off:'꺼짐',expired:'라이센스 만료',closing:'종료 중',shortcut:'Ctrl+Shift+T'},
+  de:{writein:'Schreiben in',start:'Starten',stop:'Stoppen',on:'AN',off:'AUS',expired:'Lizenz abgelaufen',closing:'Schließt in',shortcut:'Ctrl+Shift+T'},
+  fr:{writein:'Ecrire en',start:'Demarrer',stop:'Arreter',on:'ACTIF',off:'INACTIF',expired:'Licence expiree',closing:'Fermeture dans',shortcut:'Ctrl+Shift+T'},
+  es:{writein:'Escribir en',start:'Iniciar',stop:'Detener',on:'ACTIVO',off:'INACTIVO',expired:'Licencia expirada',closing:'Cerrando en',shortcut:'Ctrl+Shift+T'},
+  ru:{writein:'Писать на',start:'Старт',stop:'Стоп',on:'ВКЛ',off:'ВЫКЛ',expired:'Лицензия истекла',closing:'Закрытие через',shortcut:'Ctrl+Shift+T'},
+  zh:{writein:'输入语言',start:'开始',stop:'停止',on:'开',off:'关',expired:'许可证已过期',closing:'关闭中',shortcut:'Ctrl+Shift+T'},
+  ar:{writein:'اكتب بـ',start:'بدء',stop:'إيقاف',on:'تشغيل',off:'إيقاف',expired:'انتهت الرخصة',closing:'الإغلاق خلال',shortcut:'Ctrl+Shift+T'},
+};
+function t(key){ return (UI[userLang]||UI.en)[key]||(UI.en)[key]; }
+function applyLang(){
+  document.getElementById('writein-label').textContent=t('writein');
+  document.getElementById('tbtn').textContent=active?t('stop'):t('start');
+  document.getElementById('st').textContent=active?t('on'):t('off');
+  const cl=document.getElementById('changelang-btn');
+  if(cl) cl.textContent=t('changelang');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  invoke = window.__TAURI__?.core?.invoke || window.__TAURI_INTERNALS__?.invoke;
+  document.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if(e.target.tagName === 'INPUT') {
+      const menu = document.createElement('div');
+      menu.style.cssText = 'position:fixed;left:'+e.clientX+'px;top:'+e.clientY+'px;background:#2a2a3e;border:1px solid #444;border-radius:6px;padding:6px 16px;font-size:12px;color:#fff;cursor:pointer;z-index:9999';
+      menu.textContent = 'Paste';
+      menu.onclick = async () => { try { const t = await navigator.clipboard.readText(); e.target.value += t; e.target.focus(); } catch(ex) {} menu.remove(); };
+      document.body.appendChild(menu);
+      setTimeout(() => menu.remove(), 3000);
+      document.addEventListener('click', () => menu.remove(), {once:true});
+    }
+  });
+});
+
+// Window controls
+async function minimize() {
+  try {
+    const w = window.__TAURI__?.window;
+    if (w?.getCurrentWindow) { await w.getCurrentWindow().minimize(); }
+    else if (w?.appWindow) { await w.appWindow.minimize(); }
+    else if (w?.Window) { const win = new w.Window('main'); await win.minimize(); }
+  } catch(e) { console.log('min err', e); }
+}
+async function closeApp() {
+  try {
+    const w = window.__TAURI__?.window;
+    if (w?.getCurrentWindow) { await w.getCurrentWindow().close(); }
+    else if (w?.appWindow) { await w.appWindow.close(); }
+    else if (w?.Window) { const win = new w.Window('main'); await win.close(); }
+  } catch(e) { window.close(); }
+}
+
+// Login
+document.getElementById('key').addEventListener('keydown', e => {
+  if(e.key==='Enter') doLogin();
+});
+
+async function doLogin(){
+  const key = document.getElementById('key').value.trim();
+  const lang = document.getElementById('mylang').value;
+  if(!key || !invoke) return;
+  if(!lang){ document.getElementById('msg').className='msg err'; document.getElementById('msg').textContent='Please select your language'; return; }
+  const btn = document.getElementById('lbtn');
+  const msg = document.getElementById('msg');
+  btn.disabled = true;
+  msg.className = 'msg inf';
+  msg.textContent = 'Verifying...';
+  try {
+    const r = await invoke('verify_license', {key});
+    if(r.status === 'active'){
+      await invoke('set_languages', {source: lang, target: 'en'});
+      msg.className = 'msg ok';
+      msg.textContent = 'Activated!';
+      setTimeout(() => showMain(r), 400);
+    } else {
+      const msgs = {expired:'License expired',invalid:'Invalid license',disabled:'License disabled',hwid_mismatch:'Bound to another device'};
+      msg.className = 'msg err';
+      msg.textContent = msgs[r.status] || r.status;
+      btn.disabled = false;
+    }
+  } catch(e) {
+    msg.className = 'msg err';
+    msg.textContent = String(e);
+    btn.disabled = false;
+  }
+}
+
+function showMain(r){
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('main').style.display = 'flex';
+  const exp = r.expires ? new Date(r.expires).toLocaleDateString() : '';
+  document.getElementById('info').textContent = exp ? 'Expires: ' + exp : '';
+  if(r.languages && r.languages.length >= 2) {
+    userLang = r.languages[0];
+    document.getElementById('tgt').value = r.languages[1];
+  }
+  const ml = document.getElementById('mylang');
+  if(ml && ml.value) userLang = ml.value;
+  applyLang();
+}
+
+// Toggle
+let active = false;
+async function doToggle(){
+  if(!invoke) return;
+  active = await invoke('toggle_translation');
+  updateToggleUI();
+}
+function updateToggleUI(){
+  document.getElementById('st').textContent = active ? t('on') : t('off');
+  document.getElementById('st').className = 'status ' + (active ? 'on' : 'off');
+  document.getElementById('tbtn').textContent = active ? t('stop') : t('start');
+}
+
+function resetLang(){
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('login').style.display = 'flex';
+  document.getElementById('lbtn').disabled = false;
+  document.getElementById('msg').textContent = '';
+}
+
+async function targetChanged(){
+  if(!invoke) return;
+  const tgt = document.getElementById('tgt').value;
+  try { await invoke('set_languages', {source: userLang, target: tgt}); } catch{}
+}
+
+// Poll status
+setInterval(async () => {
+  if(!invoke) return;
+  try {
+    const s = await invoke('get_status');
+    if(s.expired && !document.getElementById('st').classList.contains('exp')) {
+      active = false;
+      document.getElementById('st').textContent = 'EXPIRED';
+      document.getElementById('st').className = 'status off exp';
+      document.getElementById('st').style.background = '#ff9800';
+      document.getElementById('tbtn').disabled = true;
+      document.getElementById('tbtn').textContent = 'Expired';
+      let sec = 10;
+      document.getElementById('info').style.color = '#ff9800';
+      const countdown = setInterval(() => {
+        document.getElementById('info').textContent = t('expired') + '. ' + t('closing') + ' ' + sec + 's...';
+        sec--;
+        if(sec < 0) {
+          clearInterval(countdown);
+          closeApp();
+        }
+      }, 1000);
+    } else if(!s.expired && s.active !== active) {
+      active = s.active; updateToggleUI();
+    }
+  } catch{}
+}, 2000);
+
+// Auto-login
+window.__TAURI__?.event?.listen?.('auto-login', (e) => {
+  if(e.payload?.ok && invoke) {
+    invoke('get_status').then(s => {
+      showMain({expires: s.expires, languages: [s.source_lang, s.target_lang]});
+    });
+  }
+});
+</script>
+</body>
+</html>

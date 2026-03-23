@@ -1,0 +1,11 @@
+*.obj
+*.exp
+*.lib
+*.pdb
+*.ilk
+*.log
+debug.log
+license.json
+*.dll.backup
+*.dll
+minhook.zip
