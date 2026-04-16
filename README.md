@@ -211,11 +211,23 @@ A: Each license is bound to one device (HWID). Contact support to transfer.
 
 ---
 
-## Support
+## Get a License / Support
 
+**Find us in Second Life:**
+
+> **IM "Ulasilmaz Winslet" in Second Life** for license purchase, support, or questions.
+> Available most hours — just send an IM and we'll get back to you!
+
+- **In-World Contact**: Ulasilmaz Winslet (Second Life)
 - **Website**: [sltranslate.com](https://sltranslate.com)
 - **Email**: info@sltranslate.com
 - **Telegram**: [@sltranslate](https://t.me/sltranslate)
+
+---
+
+## Try Before You Buy
+
+Want to see it in action? IM **Ulasilmaz Winslet** in Second Life for a **free demo**. We'll show you real-time translation working live.
 
 ---
 
