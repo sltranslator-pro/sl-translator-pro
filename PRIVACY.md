@@ -25,7 +25,7 @@ The client also contacts GitHub to check for new official releases.
 
 ## The translation service
 
-The service needs the message text to translate it. The service does not forward your messages to Google, Microsoft, OpenAI or DeepL.
+The service uses the message text only to produce the translation and does not store it. The service does not forward your messages to Google, Microsoft, OpenAI or DeepL.
 
 ## Your choices
 
