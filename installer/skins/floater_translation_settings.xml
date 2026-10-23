@@ -1,0 +1,219 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<floater
+ legacy_header_height="18"
+ height="280"
+ layout="topleft"
+ name="floater_translation_settings"
+ help_topic="translation_settings"
+ save_rect="false"
+ can_resize="false"
+ title="SL Translator Pro"
+ width="420">
+
+ <string name="azure_api_key_not_verified">License key not verified. Status: [STATUS]. Please check your key and try again.</string>
+ <string name="google_api_key_not_verified">Google API key not verified.</string>
+ <string name="deepl_api_key_not_verified">DeepL key not verified.</string>
+
+ <string name="azure_api_key_verified">License key verified!</string>
+ <string name="google_api_key_verified">Google API key verified.</string>
+ <string name="deepl_api_key_verified">DeepL API key verified.</string>
+
+ <!-- Enable Translation checkbox -->
+ <check_box
+  height="16"
+  label="Enable Translation"
+  layout="topleft"
+  left="20"
+  name="translate_chat_checkbox"
+  top="30"
+  width="250" />
+
+ <!-- My Language (incoming) -->
+ <text
+  height="20"
+  follows="left|top"
+  layout="topleft"
+  left="20"
+  name="translate_language_label"
+  top_pad="15"
+  width="130">
+  My Language:
+ </text>
+ <combo_box
+  allow_text_entry="false"
+  follows="left|top"
+  height="23"
+  left_pad="10"
+  max_chars="135"
+  mouse_opaque="true"
+  name="translate_language_combo"
+  top_delta="-5"
+  width="210">
+  <!-- Firestorm default languages -->
+  <combo_box.item label="System Default" name="System Default Language" value="default" />
+  <combo_box.item label="English" name="English" value="en" />
+  <combo_box.item label="Dansk (Danish)" name="Danish" value="da" />
+  <combo_box.item label="Deutsch (German)" name="German" value="de" />
+  <combo_box.item label="Español (Spanish)" name="Spanish" value="es" />
+  <combo_box.item label="Français (French)" name="French" value="fr" />
+  <combo_box.item label="Italiano (Italian)" name="Italian" value="it" />
+  <combo_box.item label="Magyar (Hungarian)" name="Hungarian" value="hu" />
+  <combo_box.item label="Nederlands (Dutch)" name="Dutch" value="nl" />
+  <combo_box.item label="Polski (Polish)" name="Polish" value="pl" />
+  <combo_box.item label="Português (Portuguese)" name="Portugese" value="pt" />
+  <combo_box.item label="Русский (Russian)" name="Russian" value="ru" />
+  <combo_box.item label="Türkçe (Turkish)" name="Turkish" value="tr" />
+  <combo_box.item label="Українська (Ukrainian)" name="Ukrainian" value="uk" />
+  <combo_box.item label="中文 (Chinese)" name="Chinese" value="zh" />
+  <combo_box.item label="日本語 (Japanese)" name="Japanese" value="ja" />
+  <combo_box.item label="한국어 (Korean)" name="Korean" value="ko" />
+  <!-- Additional SL Translator languages -->
+  <combo_box.item label="العربية (Arabic)" name="Arabic" value="ar" />
+  <combo_box.item label="Bahasa Indonesia" name="Indonesian" value="id" />
+  <combo_box.item label="Bahasa Melayu (Malay)" name="Malay" value="ms" />
+  <combo_box.item label="Čeština (Czech)" name="Czech" value="cs" />
+  <combo_box.item label="Ελληνικά (Greek)" name="Greek" value="el" />
+  <combo_box.item label="Filipino (Tagalog)" name="Tagalog" value="tl" />
+  <combo_box.item label="हिन्दी (Hindi)" name="Hindi" value="hi" />
+  <combo_box.item label="Română (Romanian)" name="Romanian" value="ro" />
+  <combo_box.item label="Suomi (Finnish)" name="Finnish" value="fi" />
+  <combo_box.item label="Svenska (Swedish)" name="Swedish" value="sv" />
+  <combo_box.item label="ภาษาไทย (Thai)" name="Thai" value="th" />
+  <combo_box.item label="Tiếng Việt (Vietnamese)" name="Vietnamese" value="vi" />
+ </combo_box>
+
+ <!-- Hidden radio group (Azure always selected) -->
+ <radio_group follows="top|left" height="1" layout="topleft" left_delta="10" name="translation_service_rg" top_pad="0" width="1" visible="false">
+  <radio_item initial_value="azure" label="" layout="topleft" name="azure" />
+  <radio_item initial_value="google" label="" layout="topleft" name="google" top_pad="0" />
+  <radio_item initial_value="deepl" label="" layout="topleft" name="deepl" top_pad="0" />
+ </radio_group>
+
+ <text type="string" length="1" follows="top|right" height="1" layout="topleft" left="185" name="azure_links_text" top_pad="0" width="1" visible="false"></text>
+
+ <!-- Send Messages In (outgoing language via endpoint) -->
+ <text
+  type="string"
+  length="1"
+  follows="top|right"
+  height="20"
+  layout="topleft"
+  left="20"
+  name="azure_api_endoint_label"
+  top_pad="10"
+  width="130">
+   Send Messages In:
+ </text>
+
+ <combo_box
+   allow_text_entry="false"
+   follows="left|top"
+   name="azure_api_endpoint_combo"
+   height="23"
+   left_pad="10"
+   width="210"
+   top_delta="-5"
+   max_chars="512"
+   value="https://api.sltranslate.com/azure/en/">
+   <!-- Firestorm default languages -->
+   <combo_box.item label="English" name="en" value="https://api.sltranslate.com/azure/en/" />
+   <combo_box.item label="Dansk (Danish)" name="da" value="https://api.sltranslate.com/azure/da/" />
+   <combo_box.item label="Deutsch (German)" name="de" value="https://api.sltranslate.com/azure/de/" />
+   <combo_box.item label="Español (Spanish)" name="es" value="https://api.sltranslate.com/azure/es/" />
+   <combo_box.item label="Français (French)" name="fr" value="https://api.sltranslate.com/azure/fr/" />
+   <combo_box.item label="Italiano (Italian)" name="it" value="https://api.sltranslate.com/azure/it/" />
+   <combo_box.item label="Magyar (Hungarian)" name="hu" value="https://api.sltranslate.com/azure/hu/" />
+   <combo_box.item label="Nederlands (Dutch)" name="nl" value="https://api.sltranslate.com/azure/nl/" />
+   <combo_box.item label="Polski (Polish)" name="pl" value="https://api.sltranslate.com/azure/pl/" />
+   <combo_box.item label="Português (Portuguese)" name="pt" value="https://api.sltranslate.com/azure/pt/" />
+   <combo_box.item label="Русский (Russian)" name="ru" value="https://api.sltranslate.com/azure/ru/" />
+   <combo_box.item label="Türkçe (Turkish)" name="tr" value="https://api.sltranslate.com/azure/tr/" />
+   <combo_box.item label="Українська (Ukrainian)" name="uk" value="https://api.sltranslate.com/azure/uk/" />
+   <combo_box.item label="中文 (Chinese)" name="zh" value="https://api.sltranslate.com/azure/zh/" />
+   <combo_box.item label="日本語 (Japanese)" name="ja" value="https://api.sltranslate.com/azure/ja/" />
+   <combo_box.item label="한국어 (Korean)" name="ko" value="https://api.sltranslate.com/azure/ko/" />
+   <!-- Additional SL Translator languages -->
+   <combo_box.item label="العربية (Arabic)" name="ar" value="https://api.sltranslate.com/azure/ar/" />
+   <combo_box.item label="Bahasa Indonesia" name="id" value="https://api.sltranslate.com/azure/id/" />
+   <combo_box.item label="Bahasa Melayu (Malay)" name="ms" value="https://api.sltranslate.com/azure/ms/" />
+   <combo_box.item label="Čeština (Czech)" name="cs" value="https://api.sltranslate.com/azure/cs/" />
+   <combo_box.item label="Ελληνικά (Greek)" name="el" value="https://api.sltranslate.com/azure/el/" />
+   <combo_box.item label="Filipino (Tagalog)" name="tl" value="https://api.sltranslate.com/azure/tl/" />
+   <combo_box.item label="हिन्दी (Hindi)" name="hi" value="https://api.sltranslate.com/azure/hi/" />
+   <combo_box.item label="Română (Romanian)" name="ro" value="https://api.sltranslate.com/azure/ro/" />
+   <combo_box.item label="Suomi (Finnish)" name="fi" value="https://api.sltranslate.com/azure/fi/" />
+   <combo_box.item label="Svenska (Swedish)" name="sv" value="https://api.sltranslate.com/azure/sv/" />
+   <combo_box.item label="ภาษาไทย (Thai)" name="th" value="https://api.sltranslate.com/azure/th/" />
+   <combo_box.item label="Tiếng Việt (Vietnamese)" name="vi" value="https://api.sltranslate.com/azure/vi/" />
+ </combo_box>
+
+ <!-- License Key -->
+ <text
+  type="string"
+  length="1"
+  follows="top|right"
+  height="20"
+  layout="topleft"
+  left="20"
+  name="azure_api_key_label"
+  top_pad="10"
+  width="120">
+  License Key:
+ </text>
+ <line_editor
+  default_text="Enter your license key and click Verify"
+  follows="top|left"
+  height="20"
+  layout="topleft"
+  left_pad="10"
+  max_length_chars="50"
+  top_delta="-4"
+  name="azure_api_key"
+  width="150" />
+ <text type="string" length="1" follows="top|right" height="1" layout="topleft" left="70" name="azure_api_region_label" top_pad="0" width="1" visible="false">Region:</text>
+ <line_editor default_text="global" follows="top|left" height="1" layout="topleft" left_pad="0" max_length_chars="50" top_delta="0" name="azure_api_region" width="1" visible="false" />
+ <button
+  follows="left|top"
+  height="23"
+  label="Verify"
+  layout="topleft"
+  left_pad="10"
+  name="verify_azure_api_key_btn"
+  top_delta="-2"
+  width="70" />
+
+ <!-- Hidden Google/DeepL fields (required by C++) -->
+ <text follows="top|right" height="1" layout="topleft" left="70" length="1" name="google_api_key_label" top_pad="0" type="string" width="1" visible="false"></text>
+ <line_editor follows="top|left" height="1" layout="topleft" left_pad="0" max_length_chars="50" top_delta="0" name="google_api_key" width="1" visible="false" />
+ <button follows="left|top" height="1" layout="topleft" left_pad="0" name="verify_google_api_key_btn" top_delta="0" width="1" visible="false" />
+ <text follows="top|right" height="1" layout="topleft" left="185" length="1" name="google_links_text" top_delta="0" type="string" width="1" visible="false"></text>
+ <text type="string" length="1" follows="top|right" height="1" layout="topleft" left="70" name="deepl_api_domain_label" top_pad="0" width="1" visible="false"></text>
+ <combo_box allow_text_entry="false" follows="left|top" name="deepl_api_domain_combo" height="1" left_pad="0" width="1" top_delta="0" max_chars="512" value="https://api-free.deepl.com" visible="false">
+     <combo_box.item label="DeepL Free" name="global" value="https://api-free.deepl.com" />
+ </combo_box>
+ <text follows="top|right" height="1" layout="topleft" left="70" length="1" name="deepl_api_key_label" top_pad="0" type="string" width="1" visible="false"></text>
+ <line_editor follows="top|left" height="1" layout="topleft" left_pad="0" max_length_chars="50" top_delta="0" name="deepl_api_key" width="1" visible="false" />
+ <button follows="left|top" height="1" layout="topleft" left_pad="0" name="verify_deepl_api_key_btn" top_delta="0" width="1" visible="false" />
+ <text follows="top|right" height="1" layout="topleft" left="185" length="1" name="deepl_links_text" top_delta="0" type="string" width="1" visible="false"></text>
+
+ <!-- Buttons -->
+ <button
+  follows="left|top"
+  height="23"
+  label="Save &amp; Apply"
+  layout="topleft"
+  right="-120"
+  name="ok_btn"
+  top="-30"
+  width="110"
+  commit_callback.function="Floater.ToggleOrBringToFront"
+  commit_callback.parameter="preferences" />
+ <button
+  follows="left|top"
+  height="23"
+  label="Cancel"
+  layout="topleft"
+  left_pad="5"
+  name="cancel_btn"
+  width="100" />
+</floater>

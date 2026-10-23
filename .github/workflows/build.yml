@@ -1,0 +1,38 @@
+name: Build Windows client
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build DLL
+        shell: cmd
+        run: build.bat
+
+      - name: Install NSIS
+        shell: powershell
+        run: choco install nsis --yes --no-progress
+
+      - name: Build installer
+        shell: cmd
+        run: '"C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi'
+
+      - name: Upload unsigned build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sl-translator-pro-unsigned
+          path: |
+            dist/dinput8.dll
+            dist/SLTranslatorPro_Setup_*.exe
+          if-no-files-found: error

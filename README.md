@@ -1,237 +1,102 @@
-<p align="center">
-  <img src="https://img.shields.io/badge/Second%20Life-Translator-blue?style=for-the-badge&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMi44NyAxNS4wN2wtMi41NC0yLjUxLjAzLS4wM0E5Ljk0MyA5Ljk0MyAwIDAgMCAxNC41IDIuMDdMMTIuNzEgMmgxLjc5bC0xLjA1IDEuNDdMMTQuNSA0LjU0bDEuNjctMS4wNkwxOCA1bC0yLjQ5IDEuNjdMMTcuMTcgOEgxNC41bC0xLjA1LTEuNDdMOC41IDEyLjVhOC4wMDMgOC4wMDMgMCAwIDEtNC45NC0yLjkzQTUuOTkgNS45OSAwIDAgMCA0IDJoLS4wOUExMC4xOCAxMC4xOCAwIDAgMCAxMi44NyAxNS4wN3oiLz48L3N2Zz4=" alt="SL Translator Pro"/>
-</p>
+# SL Translator Pro
 
-<h1 align="center">SL Translator Pro</h1>
+[![License: GPL v3+](https://img.shields.io/badge/License-GPLv3%2B-blue.svg)](LICENSE)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6.svg)](#building)
+[![Latest release](https://img.shields.io/github/v/release/sltranslator-pro/sl-translator-pro)](https://github.com/sltranslator-pro/sl-translator-pro/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/sltranslator-pro/sl-translator-pro/total)](https://github.com/sltranslator-pro/sl-translator-pro/releases)
 
-<p align="center">
-  <b>Real-time chat translation for Second Life / Firestorm Viewer</b><br>
-  <i>Break the language barrier — chat with anyone, anywhere in Second Life</i>
-</p>
+Free and open-source real-time chat translation integration for the 64-bit Firestorm viewer used with Second Life.
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Languages-29+-green?style=flat-square" alt="29+ Languages"/>
-  <img src="https://img.shields.io/badge/Firestorm-7.1%20%7C%207.2-orange?style=flat-square" alt="Firestorm 7.1 | 7.2"/>
-  <img src="https://img.shields.io/badge/Platform-Windows%2064--bit-blue?style=flat-square" alt="Windows 64-bit"/>
-  <img src="https://img.shields.io/github/v/release/sltranslator-pro/sl-translator-pro?style=flat-square&color=brightgreen" alt="Latest Release"/>
-  <img src="https://img.shields.io/github/downloads/sltranslator-pro/sl-translator-pro/total?style=flat-square&color=purple" alt="Downloads"/>
-</p>
+## Status
 
----
-
-## What is SL Translator Pro?
-
-SL Translator Pro automatically translates your chat messages in **real-time** while you play Second Life. Type in your language — everyone reads in theirs.
-
-- **Incoming messages** translated automatically (powered by Firestorm's built-in Azure translation)
-- **Outgoing messages** translated before sending (nobody knows you're using a translator)
-- **29+ languages** supported with AI-powered translation
-- **Native Firestorm integration** — settings right inside Preferences
-
-> You speak Turkish. Your friend speaks Japanese. You both chat naturally. SL Translator Pro handles the rest.
-
----
+- The client, installer and Firestorm UI integration in this repository are free software.
+- Official license keys are provided free of charge. Contact **Ulasilmaz Winslet** in Second Life.
+- The hosted translation service and model infrastructure are separate from this client repository.
+- The project is not affiliated with Linden Lab or the Firestorm Viewer project.
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Bi-directional Translation** | Both incoming and outgoing messages translated in real-time |
-| **29+ Languages** | English, German, French, Spanish, Portuguese, Japanese, Chinese, Korean, Russian, Turkish, Arabic, Hindi, Thai, Vietnamese, and more |
-| **Firestorm Native** | Settings integrated into Firestorm's Preferences and top menu |
-| **Invisible Translation** | Others don't know you're using translation — messages appear natural |
-| **Async Translation** | Zero lag — messages sent without freezing your viewer |
-| **Group Chat** | Works in local chat, IMs, and group messages |
-| **Auto-Update** | Automatic update notification when new version available |
-| **Private & Secure** | No messages stored, no personal data collected, own private AI servers |
-| **URL Safe** | Links are never translated — no more crashes from URL translation |
+- Incoming chat translation through Firestorm's translation interface
+- Outgoing local chat and instant-message translation
+- Firestorm settings and menu integration
+- Separate incoming and outgoing language selection
+- Local enable/disable and status commands
+- Automatic update notification
+- 64-bit Windows support
 
----
+## Repository layout
 
-## Supported Languages
-
-<table>
-<tr>
-<td>
-
-**Firestorm Default**
-- English
-- Deutsch (German)
-- Español (Spanish)
-- Français (French)
-- Italiano (Italian)
-- Magyar (Hungarian)
-- Nederlands (Dutch)
-- Polski (Polish)
-- Português (Portuguese)
-- Русский (Russian)
-- Türkçe (Turkish)
-- Українська (Ukrainian)
-- Dansk (Danish)
-- 中文 (Chinese)
-- 日本語 (Japanese)
-- 한국어 (Korean)
-
-</td>
-<td>
-
-**Additional Languages**
-- العربية (Arabic)
-- हिन्दी (Hindi)
-- ภาษาไทย (Thai)
-- Tiếng Việt (Vietnamese)
-- Filipino (Tagalog)
-- Bahasa Indonesia
-- Bahasa Melayu (Malay)
-- Čeština (Czech)
-- Ελληνικά (Greek)
-- Română (Romanian)
-- Suomi (Finnish)
-- Svenska (Swedish)
-- *...and growing*
-
-</td>
-</tr>
-</table>
-
----
-
-## Quick Start
-
-### 1. Download & Install
-
-Download the latest installer from [Releases](https://github.com/sltranslator-pro/sl-translator-pro/releases/latest).
-
-```
-1. Close Firestorm
-2. Run SLTranslatorPro_Setup
-3. Installer auto-detects your Firestorm location
-4. Accept the Privacy Policy & Terms
-5. Click Install
-6. Open Firestorm
+```text
+src/dinput8.cpp                 Windows client DLL
+installer/installer.nsi        NSIS installer definition
+installer/patch.ps1            Firestorm UI integration helper
+installer/skins/               Firestorm XUI overrides
+third_party/minhook/            MinHook dependency (BSD-2-Clause)
+build.bat                       Reproducible MSVC x64 build
+PRIVACY.md                      Data-processing disclosure
 ```
 
-### 2. Configure
+## Building
 
-```
-1. In Firestorm, click "SL Translator" menu (top bar)
-2. Click "Settings..." (or press Ctrl+Shift+T)
-3. Select "My Language" (incoming translation)
-4. Select "Send Messages In" (outgoing translation)
-5. Enter your License Key
-6. Click Verify → Save & Apply
-7. Restart Firestorm (first time only)
-```
+### Requirements
 
-### 3. Chat!
+- Windows 10 or Windows 11, 64-bit
+- Visual Studio 2022 with **Desktop development with C++**
+- Windows 10/11 SDK
+- NSIS 3.x, only if building the installer
 
-Just type normally. Your messages are automatically translated. Incoming messages from others are translated to your language.
+### Build the DLL
 
----
+Run from a regular command prompt:
 
-## Chat Commands
-
-| Command | Action |
-|---------|--------|
-| `/tr off` | Disable outgoing translation |
-| `/tr on` | Enable outgoing translation |
-| `/tr debug` | Toggle debug logging |
-| `/tr status` | Show current status |
-
----
-
-## How It Works
-
-```
-You type "Merhaba"
-    ↓
-SL Translator Pro → translates to "Hello"
-    ↓
-Other players see "Hello"
-    ↓
-Someone replies "Bonjour"
-    ↓
-SL Translator Pro → translates to "Merhaba"
-    ↓
-You see "Bonjour (Merhaba)"
+```bat
+build.bat
 ```
 
-**No one knows you're using translation.** Your messages appear completely natural to other players.
+The script locates the Visual Studio x64 toolchain and writes:
 
----
+```text
+dist\dinput8.dll
+```
 
-## Privacy & Security
+### Build the installer
 
-- **No messages stored** — translated in real-time, then discarded
-- **No personal data** — no username, no IP, no location collected
-- **Private AI servers** — no Google, no Microsoft, no OpenAI
-- **SHA-256 hashed keys** — even we can't see your license key
-- **Full policy**: [sltranslate.com/privacy](https://sltranslate.com/privacy)
+After building the DLL:
 
----
+```bat
+"C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
+```
 
-## System Requirements
+The installer is written to `dist\SLTranslatorPro_Setup_vX.Y.Z.exe`.
 
-| Component | Minimum |
-|-----------|---------|
-| OS | Windows 10/11 64-bit |
-| Viewer | Firestorm 7.1+ |
-| Internet | Broadband connection |
-| RAM | 8 GB (16 GB recommended) |
+## Installation
 
----
+For normal use, download an official package from the [Releases](https://github.com/sltranslator-pro/sl-translator-pro/releases/latest) page. Close Firestorm before running the installer.
 
-## Pricing
+This project installs a proxy `dinput8.dll` next to the Firestorm executable. Windows security policies may block unsigned builds. Prefer official, digitally signed releases when available.
 
-| Plan | Price | Details |
-|------|-------|---------|
-| Weekly | - | Perfect for trying out |
-| Monthly | - | Best value for regular users |
+## Privacy
 
-Visit [sltranslate.com](https://sltranslate.com) for pricing details.
+Chat text must be sent to the hosted translation service to produce a translation. The client also sends license and device-binding data required for access control. See [PRIVACY.md](PRIVACY.md) for the complete disclosure and retention details.
 
----
+## Security
 
-## FAQ
+- Do not download binaries from unofficial mirrors.
+- Official release checksums are published with releases when available.
+- Report vulnerabilities privately to `info@sltranslate.com`.
 
-**Q: Will other players know I'm using translation?**
-A: No. Your translated messages appear completely natural.
+See [SECURITY.md](SECURITY.md) for the security policy.
 
-**Q: Does it work with group chat?**
-A: Yes — local chat, IMs, and group messages are all supported.
+## License
 
-**Q: Is it safe? Will Firestorm detect it?**
-A: SL Translator Pro integrates natively with Firestorm's translation system. It's not a hack — it uses Firestorm's own Azure translation API.
+SL Translator Pro client code is licensed under the **GNU General Public License, version 3 or later**. See [LICENSE](LICENSE).
 
-**Q: What happens when my license expires?**
-A: Translation simply stops. No data is lost, no settings changed. Renew anytime.
+MinHook is distributed under its own BSD-2-Clause license. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-**Q: Can I use it on multiple computers?**
-A: Each license is bound to one device (HWID). Contact support to transfer.
+The GPL license for this repository does not grant access to, or impose licensing terms on, the separately operated hosted translation service, its models, datasets or server-side software.
 
----
+## Contact
 
-## Get a License / Support
-
-**Find us in Second Life:**
-
-> **IM "Ulasilmaz Winslet" in Second Life** for license purchase, support, or questions.
-> Available most hours — just send an IM and we'll get back to you!
-
-- **In-World Contact**: Ulasilmaz Winslet (Second Life)
-- **Website**: [sltranslate.com](https://sltranslate.com)
-- **Email**: info@sltranslate.com
-- **Telegram**: [@sltranslate](https://t.me/sltranslate)
-
----
-
-## Try Before You Buy
-
-Want to see it in action? IM **Ulasilmaz Winslet** in Second Life for a **free demo**. We'll show you real-time translation working live.
-
----
-
-<p align="center">
-  <b>SL Translator Pro</b> — Because language should never be a barrier in Second Life<br>
-  <i>Made with ❤️ for the Second Life community</i>
-</p>
+- In-world: **Ulasilmaz Winslet**
+- Website: `https://sltranslate.com`
+- Email: `info@sltranslate.com`

@@ -1,0 +1,33 @@
+SL TRANSLATOR PRO - PRIVACY NOTICE AND TERMS
+Last updated: October 22, 2026
+
+SL Translator Pro is free and open-source client software. The hosted translation service is operated separately.
+
+DATA SENT TO THE SERVICE
+- Chat text that needs translation
+- Requested language information
+- License key and client version
+- Temporary session identifier and translation status
+- Device identifier derived from Windows MachineGuid for access control
+
+DATA THAT MAY BE STORED
+- License status and device binding
+- Avatar UUID/name when provided during activation or support
+- Translation logs including source and translated text, language pair, timing and result status
+- Network and security metadata
+
+Under the current retention policy, message text in new operational records is scheduled for removal after up to 7 days. Diagnostic metadata may be kept longer. Some older records created before the current policy may have been retained longer for quality research.
+
+The official service uses self-hosted translation models. It does not send chat text to Google Translate, Microsoft Translator, OpenAI or DeepL. Cloudflare may process network traffic, and the client contacts GitHub for update checks.
+
+TERMS
+- The software and hosted service are provided free of charge and "as is", without warranty.
+- Translation accuracy and uninterrupted availability are not guaranteed.
+- Do not use the service for spam, abuse or illegal activity.
+- Access keys may be disabled to protect the service from abuse or excessive automated traffic.
+- Modified client builds are not official releases and may behave differently.
+
+Full information: https://github.com/sltranslator-pro/sl-translator-pro/blob/main/PRIVACY.md
+Contact: info@sltranslate.com | Ulasilmaz Winslet in Second Life
+
+By continuing, you acknowledge this notice and accept these terms.

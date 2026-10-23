@@ -1,0 +1,7 @@
+SL Translator Pro source code
+
+The complete corresponding source code for this client is available at:
+https://github.com/sltranslator-pro/sl-translator-pro
+
+License: GNU General Public License version 3 or later.
+Official releases: https://github.com/sltranslator-pro/sl-translator-pro/releases
