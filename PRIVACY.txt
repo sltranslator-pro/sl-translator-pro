@@ -14,8 +14,7 @@ SENT FOR TRANSLATION (to api.sltranslate.com over HTTPS)
 - Whether translation is on or off
 - A device identifier derived from Windows MachineGuid, used to bind your free key to one computer
 
-The translation service may keep message text for up to 7 days for troubleshooting.
-It does not forward your messages to Google, Microsoft, OpenAI or DeepL.
+The translation service does not forward your messages to Google, Microsoft, OpenAI or DeepL.
 The client also contacts GitHub to check for updates.
 
 TERMS

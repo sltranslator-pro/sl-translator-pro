@@ -25,7 +25,7 @@ The client also contacts GitHub to check for new official releases.
 
 ## The translation service
 
-The service needs the message text to translate it. The text may be kept for up to 7 days for troubleshooting and is then removed. The service does not forward your messages to Google, Microsoft, OpenAI or DeepL.
+The service needs the message text to translate it. The service does not forward your messages to Google, Microsoft, OpenAI or DeepL.
 
 ## Your choices
 
