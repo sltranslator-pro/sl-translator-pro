@@ -77,7 +77,7 @@ This project installs a proxy `dinput8.dll` next to the Firestorm executable. Wi
 
 ## Privacy
 
-Chat text must be sent to the hosted translation service to produce a translation. The client also sends license and device-binding data required for access control. See [PRIVACY.md](PRIVACY.md) for the complete disclosure and retention details.
+The client does not store chat history or logs on your computer. A local diagnostic log is written only if you turn on `/tr debug` yourself. To translate a message, the client sends its text to the translation service, together with the license and device data needed for access control. See [PRIVACY.md](PRIVACY.md) for details.
 
 ## Security
 

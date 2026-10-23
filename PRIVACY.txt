@@ -1,33 +1,30 @@
 SL TRANSLATOR PRO - PRIVACY NOTICE AND TERMS
-Last updated: October 22, 2026
+Last updated: October 23, 2026
 
-SL Translator Pro is free and open-source client software. The hosted translation service is operated separately.
+SL Translator Pro is free and open-source client software for Firestorm.
 
-DATA SENT TO THE SERVICE
-- Chat text that needs translation
-- Requested language information
-- License key and client version
-- Temporary session identifier and translation status
-- Device identifier derived from Windows MachineGuid for access control
+ON YOUR COMPUTER
+The client stores nothing during normal use: no chat history and no message log.
+If you turn on the optional /tr debug command, a diagnostic log is written to
+%TEMP%\slt_debug.log and can include translated messages. Turn debug off to stop it.
 
-DATA THAT MAY BE STORED
-- License status and device binding
-- Avatar UUID/name when provided during activation or support
-- Translation logs including source and translated text, language pair, timing and result status
-- Network and security metadata
+SENT FOR TRANSLATION (to api.sltranslate.com over HTTPS)
+- The message text and the target language
+- Your license key, client version and a temporary session identifier
+- Whether translation is on or off
+- A device identifier derived from Windows MachineGuid, used to bind your free key to one computer
 
-Under the current retention policy, message text in new operational records is scheduled for removal after up to 7 days. Diagnostic metadata may be kept longer. Some older records created before the current policy may have been retained longer for quality research.
-
-The official service uses self-hosted translation models. It does not send chat text to Google Translate, Microsoft Translator, OpenAI or DeepL. Cloudflare may process network traffic, and the client contacts GitHub for update checks.
+The translation service may keep message text for up to 7 days for troubleshooting.
+It does not forward your messages to Google, Microsoft, OpenAI or DeepL.
+The client also contacts GitHub to check for updates.
 
 TERMS
-- The software and hosted service are provided free of charge and "as is", without warranty.
-- Translation accuracy and uninterrupted availability are not guaranteed.
+- The software and service are free and provided "as is", without warranty.
+- Translation accuracy and availability are not guaranteed.
 - Do not use the service for spam, abuse or illegal activity.
-- Access keys may be disabled to protect the service from abuse or excessive automated traffic.
-- Modified client builds are not official releases and may behave differently.
+- License keys may be disabled to protect the service from abuse.
 
-Full information: https://github.com/sltranslator-pro/sl-translator-pro/blob/main/PRIVACY.md
+Full details: https://github.com/sltranslator-pro/sl-translator-pro/blob/main/PRIVACY.md
 Contact: info@sltranslate.com | Ulasilmaz Winslet in Second Life
 
-By continuing, you acknowledge this notice and accept these terms.
+By continuing, you accept this notice and these terms.
