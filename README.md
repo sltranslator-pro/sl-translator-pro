@@ -11,7 +11,6 @@ Free and open-source real-time chat translation integration for the 64-bit Fires
 
 - The client, installer and Firestorm UI integration in this repository are free software.
 - Official license keys are provided free of charge. Contact **Ulasilmaz Winslet** in Second Life.
-- The hosted translation service and model infrastructure are separate from this client repository.
 - The project is not affiliated with Linden Lab or the Firestorm Viewer project.
 
 ## Features
@@ -77,7 +76,7 @@ This project installs a proxy `dinput8.dll` next to the Firestorm executable. Wi
 
 ## Privacy
 
-The client does not store chat history or logs on your computer. A local diagnostic log is written only if you turn on `/tr debug` yourself. To translate a message, the client sends its text to the translation service, together with the license and device data needed for access control. See [PRIVACY.md](PRIVACY.md) for details.
+The client does not store chat history or logs on your computer. A local diagnostic log is written only if you turn on `/tr debug` yourself. See [PRIVACY.md](PRIVACY.md) for details.
 
 ## Security
 
@@ -92,8 +91,6 @@ See [SECURITY.md](SECURITY.md) for the security policy.
 SL Translator Pro client code is licensed under the **GNU General Public License, version 3 or later**. See [LICENSE](LICENSE).
 
 MinHook is distributed under its own BSD-2-Clause license. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-The GPL license for this repository does not grant access to, or impose licensing terms on, the separately operated hosted translation service, its models, datasets or server-side software.
 
 ## Contact
 
