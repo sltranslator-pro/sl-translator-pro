@@ -74,9 +74,30 @@ For normal use, download an official package from the [Releases](https://github.
 
 This project installs a proxy `dinput8.dll` next to the Firestorm executable. Windows security policies may block unsigned builds. Prefer official, digitally signed releases when available.
 
+### What the installer changes
+
+- Copies `dinput8.dll` into the Firestorm folder (an existing `dinput8.dll` is kept as `dinput8.dll.backup`)
+- Adds the SL Translator settings panel and menu to Firestorm's UI files
+- Registers an uninstaller under **Settings → Apps → Installed apps**
+
+### Uninstall
+
+Remove **SL Translator Pro** from **Settings → Apps → Installed apps**, or run `SLTranslator_Uninstall.exe` in the Firestorm folder. The uninstaller removes the DLL and restores any backed-up `dinput8.dll`. To stop translation without uninstalling, use `/tr off`.
+
 ## Privacy
 
 The client does not store chat history or logs on your computer. A local diagnostic log is written only if you turn on `/tr debug` yourself. See [PRIVACY.md](PRIVACY.md) for details.
+
+## Code signing policy
+
+Official Windows releases are built from this repository by GitHub Actions and signed after manual approval.
+
+- Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) *(pending approval; current releases are unsigned)*
+- Committers and reviewers: [repository collaborators](https://github.com/sltranslator-pro/sl-translator-pro/graphs/contributors)
+- Approvers: [sltranslator-pro](https://github.com/sltranslator-pro)
+- Privacy policy: [PRIVACY.md](PRIVACY.md), shown during installation
+
+See [CODE_SIGNING.md](CODE_SIGNING.md) for verification steps.
 
 ## Security
 

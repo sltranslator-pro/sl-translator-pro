@@ -36,9 +36,13 @@ cl.exe /nologo /c /O2 /MT /DNDEBUG /I"third_party\minhook\include" /Fo"build\\" 
     third_party\minhook\src\hde\hde64.c
 if errorlevel 1 goto :fail
 
+echo Compiling version resource...
+rc.exe /nologo /fo"build\version.res" src\version.rc
+if errorlevel 1 goto :fail
+
 echo Compiling dinput8.dll...
 cl.exe /nologo /EHsc /O2 /MT /DNDEBUG /I"third_party\minhook\include" /LD /Fo"build\\" /Fe"dist\dinput8.dll" ^
-    src\dinput8.cpp build\hook.obj build\buffer.obj build\trampoline.obj build\hde64.obj ^
+    src\dinput8.cpp build\hook.obj build\buffer.obj build\trampoline.obj build\hde64.obj build\version.res ^
     /link /DLL /IMPLIB:build\dinput8.lib user32.lib winhttp.lib shell32.lib kernel32.lib gdi32.lib ws2_32.lib advapi32.lib ole32.lib
 if errorlevel 1 goto :fail
 

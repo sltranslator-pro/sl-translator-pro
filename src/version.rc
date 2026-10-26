@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 SL Translator Pro contributors
+//
+// Windows version resource for dinput8.dll. Keep SLT_VER_* in sync with
+// SLT_VERSION in dinput8.cpp and VERSION in installer/installer.nsi.
+
+#include <winver.h>
+
+#define SLT_VER_MAJOR 1
+#define SLT_VER_MINOR 5
+#define SLT_VER_PATCH 1
+#define SLT_VER_STR   "1.5.1"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    SLT_VER_MAJOR, SLT_VER_MINOR, SLT_VER_PATCH, 0
+ PRODUCTVERSION SLT_VER_MAJOR, SLT_VER_MINOR, SLT_VER_PATCH, 0
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+ FILEFLAGS      0x0L
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_DLL
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "SL Translator Pro contributors"
+            VALUE "FileDescription",  "SL Translator Pro client for Firestorm"
+            VALUE "FileVersion",      SLT_VER_STR
+            VALUE "InternalName",     "dinput8"
+            VALUE "LegalCopyright",   "Copyright (C) 2026 SL Translator Pro contributors. GPL-3.0-or-later."
+            VALUE "OriginalFilename", "dinput8.dll"
+            VALUE "ProductName",      "SL Translator Pro"
+            VALUE "ProductVersion",   SLT_VER_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END
