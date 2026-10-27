@@ -9,8 +9,8 @@ Free and open-source real-time chat translation integration for the 64-bit Fires
 
 ## Status
 
-- The client, installer and Firestorm UI integration in this repository are free software.
-- Official license keys are provided free of charge. Contact **Ulasilmaz Winslet** in Second Life.
+- The client, installer and Firestorm UI integration in this repository are free software under GPL-3.0-or-later. They are free to download, use, modify and redistribute.
+- Translation is performed by a separately operated hosted service. Access to that service is provided separately from this repository; the client software itself is never sold.
 - The project is not affiliated with Linden Lab or the Firestorm Viewer project.
 
 ## Features
@@ -90,11 +90,11 @@ The client does not store chat history or logs on your computer. A local diagnos
 
 ## Code signing policy
 
-Official Windows releases are built from this repository by GitHub Actions and signed after manual approval.
+Official Windows releases are built from this repository and signed with an Authenticode code signing certificate issued by Certum (Asseco Data Systems S.A.) to the project maintainer. Current releases are unsigned until the certificate is issued.
 
-- Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org) *(pending approval; current releases are unsigned)*
-- Committers and reviewers: [repository collaborators](https://github.com/sltranslator-pro/sl-translator-pro/graphs/contributors)
-- Approvers: [sltranslator-pro](https://github.com/sltranslator-pro)
+- Signed artifacts: `dinput8.dll` and the `SLTranslatorPro_Setup_vX.Y.Z.exe` installer
+- Signatures use SHA-256 with an RFC 3161 timestamp
+- Signing keys are held in a cloud HSM and never stored in this repository
 - Privacy policy: [PRIVACY.md](PRIVACY.md), shown during installation
 
 See [CODE_SIGNING.md](CODE_SIGNING.md) for verification steps.
