@@ -115,6 +115,6 @@ MinHook is distributed under its own BSD-2-Clause license. See [THIRD_PARTY_NOTI
 
 ## Contact
 
-- In-world: **Ulasilmaz Winslet**
+- Maintainer and contact person: **Ulasilmaz Winslet** (Second Life username: `ulasilmaz.winslet`)
 - Website: `https://sltranslate.com`
 - Email: `info@sltranslate.com`
