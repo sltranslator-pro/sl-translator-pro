@@ -114,7 +114,7 @@ SL Translator Pro client code is licensed under the **GNU General Public License
 MinHook is distributed under its own BSD-2-Clause license. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Contact
-- Project Author: Selami Kılıç
+
 - Maintainer and contact person: **Ulasilmaz Winslet** (Second Life username: `ulasilmaz.winslet`)
 - Website: `https://sltranslate.com`
 - Email: `info@sltranslate.com`
