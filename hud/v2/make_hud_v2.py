@@ -45,8 +45,8 @@ EDGE = (96, 150, 225)
 ACCENT = (86, 176, 255)
 GREEN = (64, 224, 160)
 RED = (255, 92, 92)
-TEXT = (248, 251, 255)
-MUTED = (186, 202, 230)
+TEXT = (255, 255, 255)
+MUTED = (214, 226, 246)
 BTN = (62, 86, 134)
 BTN_EDGE = (110, 146, 206)
 WIN = (24, 36, 62)
@@ -90,7 +90,7 @@ def draw_cell(d, x0, y0, code, english, native):
     f = fit_font(d, native, fname, idx, 222, 40, 18, **kw)
     center_text(d, x0 + 128, y0 + 54, native, f, TEXT + (255,), **kw)
     center_text(d, x0 + 128, y0 + 100, f"{english.upper()}  ·  {code.upper()}",
-                font("segoeuib.ttf", 17), MUTED + (255,))
+                font("segoeuib.ttf", 20), MUTED + (255,))
 
 
 def render_langs():
@@ -141,13 +141,13 @@ def dual_icon(d, cx, cy, color, fill_second):
 
 def lang_block(d, x0, x1, win, caption, hint):
     button(d, x0, x1, 14, 242)
-    center_text(d, (x0 + x1) / 2, 40, caption, font("segoeuib.ttf", 22), MUTED + (255,))
+    center_text(d, (x0 + x1) / 2, 42, caption, font("segoeuib.ttf", 30), TEXT + (255,))
     wx0, wy0, wx1, wy1 = win
     d.rounded_rectangle((wx0, wy0, wx1, wy1), radius=16, fill=WIN + (255,), outline=WIN_EDGE + (255,), width=2)
     center_text(d, (wx0 + wx1) / 2, (wy0 + wy1) / 2, "—", font("segoeuib.ttf", 34), MUTED + (255,))
     cx, cy = (wx1 + x1) / 2, (wy0 + wy1) / 2
-    d.polygon([(cx - 13, cy - 7), (cx + 13, cy - 7), (cx, cy + 9)], fill=ACCENT + (255,))
-    center_text(d, (x0 + x1) / 2, 205, hint, font("segoeui.ttf", 20), MUTED + (255,))
+    d.polygon([(cx - 16, cy - 9), (cx + 16, cy - 9), (cx, cy + 11)], fill=ACCENT + (255,))
+    center_text(d, (x0 + x1) / 2, 208, hint, font("seguisb.ttf", 28), MUTED + (255,))
 
 
 def render_bar(on, dual):
@@ -163,17 +163,17 @@ def render_bar(on, dual):
     d = ImageDraw.Draw(img)
     button(d, POWER[0], POWER[1], 14, 242, fill=mix(BTN, state, 0.16), edge=state, width=3)
     cx = (POWER[0] + POWER[1]) / 2
-    center_text(d, cx, 40, "POWER", font("segoeuib.ttf", 20), MUTED + (255,))
-    power_icon(d, cx, 118, 36, state)
-    center_text(d, cx, 200, "ON" if on else "OFF", font("segoeuib.ttf", 32), state + (255,))
+    center_text(d, cx, 40, "POWER", font("segoeuib.ttf", 27), TEXT + (255,))
+    power_icon(d, cx, 116, 36, state)
+    center_text(d, cx, 200, "ON" if on else "OFF", font("segoeuib.ttf", 44), state + (255,))
 
-    lang_block(d, MY[0], MY[1], WIN_MY, "MY LANGUAGE", "what I read")
-    lang_block(d, SEND[0], SEND[1], WIN_SEND, "SEND LANGUAGE", "what I send")
+    lang_block(d, MY[0], MY[1], WIN_MY, "MY LANGUAGE", "I read")
+    lang_block(d, SEND[0], SEND[1], WIN_SEND, "SEND LANGUAGE", "I send")
 
     # swap
     button(d, SWAP[0], SWAP[1], 78, 162)
-    center_text(d, (SWAP[0] + SWAP[1]) / 2, 116, "⇄", font("seguisym.ttf", 40), TEXT + (255,))
-    center_text(d, (SWAP[0] + SWAP[1]) / 2, 186, "SWAP", font("segoeuib.ttf", 15), MUTED + (255,))
+    center_text(d, (SWAP[0] + SWAP[1]) / 2, 116, "⇄", font("seguisym.ttf", 44), TEXT + (255,))
+    center_text(d, (SWAP[0] + SWAP[1]) / 2, 190, "SWAP", font("segoeuib.ttf", 19), TEXT + (255,))
 
     # dual
     dcol = ACCENT if dual else MUTED
@@ -183,19 +183,19 @@ def render_bar(on, dual):
     button(d, DUAL[0], DUAL[1], 14, 242,
            fill=mix(BTN, ACCENT, 0.18) if dual else BTN, edge=ACCENT if dual else BTN_EDGE, width=3 if dual else 2)
     cx = (DUAL[0] + DUAL[1]) / 2
-    center_text(d, cx, 40, "DUAL", font("segoeuib.ttf", 22), (TEXT if dual else MUTED) + (255,))
-    dual_icon(d, cx, 112, dcol, dual)
-    center_text(d, cx, 176, "original", font("segoeui.ttf", 17), MUTED + (255,))
-    center_text(d, cx, 198, "+ translation", font("segoeui.ttf", 17), MUTED + (255,))
-    center_text(d, cx, 226, "ON" if dual else "OFF", font("segoeuib.ttf", 17), dcol + (255,))
+    center_text(d, cx, 40, "DUAL", font("segoeuib.ttf", 30), TEXT + (255,))
+    dual_icon(d, cx, 108, dcol, dual)
+    center_text(d, cx, 166, "orig +", font("seguisb.ttf", 22), MUTED + (255,))
+    center_text(d, cx, 189, "transl.", font("seguisb.ttf", 22), MUTED + (255,))
+    center_text(d, cx, 222, "ON" if dual else "OFF", font("segoeuib.ttf", 26), (ACCENT if dual else TEXT) + (255,))
 
     # status
     button(d, STATUS[0], STATUS[1], 14, 242)
     cx = (STATUS[0] + STATUS[1]) / 2
-    center_text(d, cx, 40, "STATUS", font("segoeuib.ttf", 19), MUTED + (255,))
-    shield_icon(d, cx, 116, 30, ACCENT)
-    center_text(d, cx, 186, "license", font("segoeui.ttf", 17), MUTED + (255,))
-    center_text(d, cx, 208, "& days left", font("segoeui.ttf", 15), MUTED + (255,))
+    center_text(d, cx, 40, "STATUS", font("segoeuib.ttf", 23), TEXT + (255,))
+    shield_icon(d, cx, 114, 32, ACCENT)
+    center_text(d, cx, 182, "license", font("seguisb.ttf", 22), MUTED + (255,))
+    center_text(d, cx, 208, "& days", font("seguisb.ttf", 22), MUTED + (255,))
     return img
 
 

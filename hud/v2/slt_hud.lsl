@@ -46,8 +46,8 @@ float WIN_T      = 0.5312;
 float WIN_W      = 0.1953; // fraction of bar width
 float WIN_H      = 0.3906; // fraction of bar height
 
-// Bar size in metres when attached (the front face).
-vector BAR_SIZE = <0.01, 0.40, 0.10>;
+// Bar size in metres when attached (the front face). 4:1 like the texture.
+vector BAR_SIZE = <0.01, 0.48, 0.12>;
 float  PICK_GAP = 0.006;   // gap between bar and picker
 
 // ------------------------------------------------------------ state
