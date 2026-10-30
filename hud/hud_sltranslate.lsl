@@ -119,8 +119,13 @@ UpdateText()
     llSetText(line1 + "\n" + pair + extra, color, 1.0);
     string tex = TEX_OFF;
     if (gOn) tex = TEX_ON;
-    if (llGetInventoryType(tex) == INVENTORY_TEXTURE || (key)tex)
-        llSetTexture(tex, FACE);
+    // Doku prim içindeyse adıyla, değilse UUID olarak yazılmışsa onunla uygula.
+    integer useTex = (llGetInventoryType(tex) == INVENTORY_TEXTURE);
+    if (!useTex)
+    {
+        if ((key)tex) useTex = TRUE;
+    }
+    if (useTex) llSetTexture(tex, FACE);
 }
 
 string HitButton(vector st)
