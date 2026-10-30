@@ -1,21 +1,6 @@
 // SL Translator Pro - Proxy dinput8.dll
-// Copyright (C) 2026 SL Translator Pro contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-//
-// Hooks outgoing Second Life chat/IM packets for translation.
-// Language selection and license management use Firestorm's translation UI.
+// Sendto hook ile giden chat/IM mesajlarını çevirir
+// Dil seçimi ve lisans yönetimi Firestorm floater'dan yapılır
 
 #define WIN32_LEAN_AND_MEAN
 #define UNICODE
@@ -34,13 +19,16 @@
 #include <vector>
 #include <array>
 #include <deque>
+#include <set>
 #include <unordered_map>
 #include <atomic>
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <shlobj.h>
 #include "MinHook.h"
+#include "sl_packet.h"
 
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "shell32.lib")
@@ -116,6 +104,16 @@ static std::atomic<bool> g_userEnabled(true);
 static std::atomic<bool> g_includeOriginal(false); // /tr src on|off — ask server to prefix the outgoing text with the untranslated original (space permitting)
 static std::atomic<unsigned long long> g_statusGeneration(0);
 static std::string g_targetLang; // outgoing translation target ("Send Messages In"), parsed from settings.xml's AzureTranslateAPIKey.endpoint URL
+static std::string g_myLang;      // "My Language" (what I read), from settings.xml's TranslateLanguage. With target_lang this forms the language pair the model translates on.
+// A HUD language-pair verification can override Firestorm's in-memory
+// translation pair for the rest of the session. This is deliberately separate
+// from settings.xml: Firestorm only commits the Translation floater controls
+// when its OK button is pressed, while the HUD must take effect immediately.
+// `/tr lang auto` clears this override and returns to settings.xml.
+static std::atomic<bool> g_runtimeLanguageOverride(false);
+static std::atomic<unsigned long long> g_languageOverrideGeneration(0);
+static std::atomic<unsigned long long> g_loggedMyLanguageGeneration(0);
+static std::atomic<unsigned long long> g_loggedAzureLanguageGeneration(0);
 static const wchar_t* API_HOST = L"api.sltranslate.com";
 static std::mutex g_configMutex;
 
@@ -138,6 +136,18 @@ static bool SleepUntilShutdown(DWORD totalMs) {
 // Defined in the debug-log section below. The Firestorm patch is initialized
 // before that section in this file, so it needs a forward declaration here.
 void LogMsg(const char* msg);
+static std::string GetOwnAgentUuidString();
+
+static bool NormalizeTwoLetterLanguageCode(const std::string& raw, std::string& normalized) {
+    if (raw.size() != 2) return false;
+    unsigned char a = (unsigned char)raw[0];
+    unsigned char b = (unsigned char)raw[1];
+    if (!std::isalpha(a) || !std::isalpha(b)) return false;
+    normalized.clear();
+    normalized.push_back((char)std::tolower(a));
+    normalized.push_back((char)std::tolower(b));
+    return true;
+}
 
 // ==========================================
 // Firestorm local-chat source filter
@@ -167,9 +177,10 @@ static BYTE* g_avatarOnlyPatchAddress = NULL;
 static BYTE g_avatarOnlyOriginalBytes[3] = {};
 static std::atomic<bool> g_avatarOnlyPatchInstalled(false);
 
-static bool GetMainModuleTextSection(BYTE*& textBase, size_t& textSize) {
-    textBase = NULL;
-    textSize = 0;
+static bool GetMainModuleSection(const char* wantedName, BYTE*& sectionBase, size_t& sectionSize) {
+    sectionBase = NULL;
+    sectionSize = 0;
+    if (!wantedName || !*wantedName) return false;
 
     HMODULE module = GetModuleHandleW(NULL);
     if (!module) return false;
@@ -185,13 +196,321 @@ static bool GetMainModuleTextSection(BYTE*& textBase, size_t& textSize) {
     for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
         char name[9] = {};
         memcpy(name, section->Name, IMAGE_SIZEOF_SHORT_NAME);
-        if (strcmp(name, ".text") == 0) {
-            textBase = imageBase + section->VirtualAddress;
-            textSize = (size_t)section->Misc.VirtualSize;
-            return textBase != NULL && textSize > 0;
+        if (strcmp(name, wantedName) == 0) {
+            sectionBase = imageBase + section->VirtualAddress;
+            sectionSize = (size_t)section->Misc.VirtualSize;
+            return sectionBase != NULL && sectionSize > 0;
         }
     }
     return false;
+}
+
+static bool GetMainModuleTextSection(BYTE*& textBase, size_t& textSize) {
+    return GetMainModuleSection(".text", textBase, textSize);
+}
+
+// ==========================================
+// Firestorm live translation-language hooks
+// ==========================================
+// REA/source analysis of Firestorm 7.2.5.81788 established two narrow hook
+// points:
+//
+//   LLTranslate::getTranslateLanguage()       RVA 0x1163BD0
+//   LLAzureTranslationHandler::getTranslateURL() RVA 0x115E8C0
+//
+// The first reads Global.TranslateLanguage for every incoming translation.
+// The second builds the Azure endpoint from AzureTranslateAPIKey.endpoint.
+// Hooking both lets a HUD-selected pair take effect immediately without
+// pressing OK in Preferences: `my` replaces the query target and `target`
+// replaces the two-letter /azure/xx/ endpoint segment.
+//
+// We never construct or destroy a Firestorm std::string in this DLL. Firestorm
+// uses the dynamic MSVC runtime while this proxy is /MT; crossing allocators
+// would be unsafe. Instead, each original function constructs its own result,
+// then the hook overwrites only same-size bytes in that already-valid object.
+// For getTranslateLanguage the returned value is guaranteed by Firestorm's
+// source to be at most two bytes (`substr(0,2)`), so updating its size and SSO
+// buffer cannot allocate. The URL hook replaces exactly two existing bytes.
+// Unknown viewer layouts fail closed: both functions must be found exactly
+// once by their code-to-literal relationship before either hook is installed.
+
+using FirestormGetTranslateLanguageFn = void* (__fastcall*)(void* resultString);
+using FirestormAzureGetTranslateUrlFn = void* (__fastcall*)(
+    void* self,
+    void* resultString,
+    const void* fromLanguage,
+    const void* toLanguage,
+    const void* text);
+
+static FirestormGetTranslateLanguageFn g_origFirestormGetTranslateLanguage = NULL;
+static FirestormAzureGetTranslateUrlFn g_origFirestormAzureGetTranslateUrl = NULL;
+static std::atomic<bool> g_liveLanguageHooksInstalled(false);
+
+static bool GetFirestormStringView(void* stringObject, char*& data, size_t& length, size_t& capacity) {
+    data = NULL;
+    length = 0;
+    capacity = 0;
+    if (!stringObject) return false;
+
+    BYTE* objectBytes = reinterpret_cast<BYTE*>(stringObject);
+    memcpy(&length, objectBytes + 16, sizeof(length));
+    memcpy(&capacity, objectBytes + 24, sizeof(capacity));
+
+    // MSVC's release x64 basic_string layout observed in the target binary:
+    // 16-byte SSO union, size at +0x10, capacity at +0x18.
+    if (capacity > (1024 * 1024) || length > capacity) return false;
+    if (capacity <= 15) {
+        data = reinterpret_cast<char*>(objectBytes);
+    } else {
+        memcpy(&data, objectBytes, sizeof(data));
+    }
+    return data != NULL;
+}
+
+static bool ReplaceFirestormStringWithTwoLetterCode(void* stringObject, const std::string& code) {
+    if (code.size() != 2) return false;
+
+    char* data = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    if (!GetFirestormStringView(stringObject, data, length, capacity) || capacity < 2) return false;
+
+    data[0] = code[0];
+    data[1] = code[1];
+    data[2] = '\0';
+    size_t newLength = 2;
+    memcpy(reinterpret_cast<BYTE*>(stringObject) + 16, &newLength, sizeof(newLength));
+    return true;
+}
+
+static bool ReplaceAzureEndpointLanguageInFirestormUrl(void* stringObject, const std::string& code) {
+    if (code.size() != 2) return false;
+
+    char* data = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    if (!GetFirestormStringView(stringObject, data, length, capacity) || length < 12) return false;
+
+    static const char marker[] = "/azure/";
+    const size_t markerLength = sizeof(marker) - 1;
+    for (size_t i = 0; i + markerLength + 3 <= length; ++i) {
+        if (memcmp(data + i, marker, markerLength) != 0) continue;
+        size_t languagePos = i + markerLength;
+        // Our endpoint contract is /azure/<two-letter-code>/.... Do not alter
+        // an unrelated path that merely contains the word "azure".
+        if (data[languagePos + 2] != '/') return false;
+        data[languagePos] = code[0];
+        data[languagePos + 1] = code[1];
+        return true;
+    }
+    return false;
+}
+
+static BYTE* FindUniqueAsciiLiteral(BYTE* sectionBase, size_t sectionSize, const char* literal) {
+    if (!sectionBase || !literal) return NULL;
+    size_t literalLength = strlen(literal);
+    if (literalLength == 0 || sectionSize <= literalLength) return NULL;
+
+    BYTE* hit = NULL;
+    size_t hitCount = 0;
+    for (size_t i = 0; i + literalLength < sectionSize; ++i) {
+        if (memcmp(sectionBase + i, literal, literalLength) == 0 &&
+            sectionBase[i + literalLength] == 0) {
+            hit = sectionBase + i;
+            ++hitCount;
+            if (hitCount > 1) return NULL;
+        }
+    }
+    return hitCount == 1 ? hit : NULL;
+}
+
+static BYTE* ResolveRipRelativeTarget(BYTE* instruction, size_t displacementOffset, size_t instructionLength) {
+    int32_t displacement = 0;
+    memcpy(&displacement, instruction + displacementOffset, sizeof(displacement));
+    return instruction + instructionLength + displacement;
+}
+
+static BYTE* FindFirestormGetTranslateLanguageFunction() {
+    BYTE* textBase = NULL;
+    size_t textSize = 0;
+    BYTE* rdataBase = NULL;
+    size_t rdataSize = 0;
+    if (!GetMainModuleSection(".text", textBase, textSize) ||
+        !GetMainModuleSection(".rdata", rdataBase, rdataSize)) return NULL;
+
+    BYTE* literal = FindUniqueAsciiLiteral(rdataBase, rdataSize, "TranslateLanguage");
+    if (!literal) return NULL;
+
+    static const BYTE prologue[] = { 0x40, 0x53, 0x48, 0x83, 0xEC, 0x70 };
+    static const BYTE afterLiteral[] = {
+        0x48, 0x89, 0x44, 0x24, 0x40,
+        0x48, 0xC7, 0x44, 0x24, 0x48, 0x11, 0x00, 0x00, 0x00,
+        0x4C, 0x8D, 0x44, 0x24, 0x40,
+        0x48, 0x8B, 0xD1,
+        0x48, 0x8D, 0x0D
+    };
+
+    BYTE* match = NULL;
+    size_t matchCount = 0;
+    for (size_t i = 0x25; i + 64 < textSize; ++i) {
+        BYTE* p = textBase + i;
+        if (p[0] != 0x48 || p[1] != 0x8D || p[2] != 0x05) continue;
+        if (ResolveRipRelativeTarget(p, 3, 7) != literal) continue;
+        if (memcmp(p + 7, afterLiteral, sizeof(afterLiteral)) != 0) continue;
+
+        BYTE* candidate = p - 0x25;
+        if (memcmp(candidate, prologue, sizeof(prologue)) != 0) continue;
+        match = candidate;
+        ++matchCount;
+    }
+    return matchCount == 1 ? match : NULL;
+}
+
+static BYTE* FindFirestormAzureGetTranslateUrlFunction() {
+    BYTE* textBase = NULL;
+    size_t textSize = 0;
+    BYTE* rdataBase = NULL;
+    size_t rdataSize = 0;
+    if (!GetMainModuleSection(".text", textBase, textSize) ||
+        !GetMainModuleSection(".rdata", rdataBase, rdataSize)) return NULL;
+
+    BYTE* literal = FindUniqueAsciiLiteral(rdataBase, rdataSize, "translate?api-version=3.0&to=");
+    if (!literal) return NULL;
+
+    static const BYTE prologue[] = {
+        0x48, 0x89, 0x5C, 0x24, 0x08,
+        0x48, 0x89, 0x74, 0x24, 0x18,
+        0x55, 0x57, 0x41, 0x56,
+        0x48, 0x8D, 0x6C, 0x24, 0xE0,
+        0x48, 0x81, 0xEC, 0x20, 0x01, 0x00, 0x00
+    };
+    static const BYTE argumentMoves[] = { 0x49, 0x8B, 0xD9, 0x48, 0x8B, 0xFA };
+
+    BYTE* match = NULL;
+    size_t matchCount = 0;
+    for (size_t i = 0; i + 8 < textSize; ++i) {
+        BYTE* p = textBase + i;
+        // vmovups xmm1, xmmword ptr [rip+disp32]
+        if (p[0] != 0xC5 || p[1] != 0xF8 || p[2] != 0x10 || p[3] != 0x0D) continue;
+        if (ResolveRipRelativeTarget(p, 4, 8) != literal) continue;
+        if (i < 0x27E) continue;
+
+        BYTE* candidate = p - 0x27E;
+        if (memcmp(candidate, prologue, sizeof(prologue)) != 0) continue;
+        if (memcmp(candidate + 0x28, argumentMoves, sizeof(argumentMoves)) != 0) continue;
+        match = candidate;
+        ++matchCount;
+    }
+    return matchCount == 1 ? match : NULL;
+}
+
+static bool SnapshotRuntimeLanguageOverride(std::string& myLanguage, std::string& targetLanguage) {
+    if (!g_runtimeLanguageOverride.load(std::memory_order_acquire)) return false;
+    {
+        std::lock_guard<std::mutex> lock(g_configMutex);
+        myLanguage = g_myLang;
+        targetLanguage = g_targetLang;
+    }
+    return myLanguage.size() == 2 && targetLanguage.size() == 2;
+}
+
+static void* __fastcall HookedFirestormGetTranslateLanguage(void* resultString) {
+    void* result = g_origFirestormGetTranslateLanguage
+        ? g_origFirestormGetTranslateLanguage(resultString)
+        : resultString;
+
+    std::string myLanguage;
+    std::string targetLanguage;
+    if (SnapshotRuntimeLanguageOverride(myLanguage, targetLanguage)) {
+        if (ReplaceFirestormStringWithTwoLetterCode(resultString, myLanguage)) {
+            unsigned long long generation = g_languageOverrideGeneration.load();
+            if (generation != 0 && g_loggedMyLanguageGeneration.exchange(generation) != generation) {
+                LogMsg(("Firestorm live my-language applied: " + myLanguage).c_str());
+            }
+        }
+    }
+    return result ? result : resultString;
+}
+
+static void* __fastcall HookedFirestormAzureGetTranslateUrl(
+    void* self,
+    void* resultString,
+    const void* fromLanguage,
+    const void* toLanguage,
+    const void* text) {
+    void* result = g_origFirestormAzureGetTranslateUrl
+        ? g_origFirestormAzureGetTranslateUrl(self, resultString, fromLanguage, toLanguage, text)
+        : resultString;
+
+    std::string myLanguage;
+    std::string targetLanguage;
+    if (SnapshotRuntimeLanguageOverride(myLanguage, targetLanguage)) {
+        if (ReplaceAzureEndpointLanguageInFirestormUrl(resultString, targetLanguage)) {
+            unsigned long long generation = g_languageOverrideGeneration.load();
+            if (generation != 0 && g_loggedAzureLanguageGeneration.exchange(generation) != generation) {
+                LogMsg(("Firestorm live Azure endpoint language applied: " + targetLanguage).c_str());
+            }
+        }
+    }
+    return result ? result : resultString;
+}
+
+static bool InstallFirestormLiveLanguageHooks() {
+    if (g_liveLanguageHooksInstalled.load()) return true;
+
+    BYTE* getLanguage = FindFirestormGetTranslateLanguageFunction();
+    BYTE* getAzureUrl = FindFirestormAzureGetTranslateUrlFunction();
+    if (!getLanguage || !getAzureUrl) {
+        LogMsg("Live language hooks: required Firestorm functions not found uniquely; runtime override disabled");
+        return false;
+    }
+
+    HMODULE module = GetModuleHandleW(NULL);
+    BYTE* imageBase = reinterpret_cast<BYTE*>(module);
+    char line[240];
+    sprintf_s(line, "Live language hooks: getLanguage=%p (RVA 0x%llX), getAzureUrl=%p (RVA 0x%llX)",
+        getLanguage, (unsigned long long)(getLanguage - imageBase),
+        getAzureUrl, (unsigned long long)(getAzureUrl - imageBase));
+    LogMsg(line);
+
+    MH_STATUS status = MH_CreateHook(getLanguage,
+        reinterpret_cast<LPVOID>(&HookedFirestormGetTranslateLanguage),
+        reinterpret_cast<LPVOID*>(&g_origFirestormGetTranslateLanguage));
+    if (status != MH_OK) {
+        sprintf_s(line, "Live language hooks: MH_CreateHook(getLanguage) failed: %d", status);
+        LogMsg(line);
+        return false;
+    }
+
+    status = MH_CreateHook(getAzureUrl,
+        reinterpret_cast<LPVOID>(&HookedFirestormAzureGetTranslateUrl),
+        reinterpret_cast<LPVOID*>(&g_origFirestormAzureGetTranslateUrl));
+    if (status != MH_OK) {
+        sprintf_s(line, "Live language hooks: MH_CreateHook(getAzureUrl) failed: %d", status);
+        LogMsg(line);
+        MH_RemoveHook(getLanguage);
+        g_origFirestormGetTranslateLanguage = NULL;
+        return false;
+    }
+
+    MH_STATUS languageEnable = MH_EnableHook(getLanguage);
+    MH_STATUS azureEnable = MH_EnableHook(getAzureUrl);
+    if (languageEnable != MH_OK || azureEnable != MH_OK) {
+        sprintf_s(line, "Live language hooks: enable failed (language=%d azure=%d)",
+            languageEnable, azureEnable);
+        LogMsg(line);
+        MH_DisableHook(getLanguage);
+        MH_DisableHook(getAzureUrl);
+        MH_RemoveHook(getLanguage);
+        MH_RemoveHook(getAzureUrl);
+        g_origFirestormGetTranslateLanguage = NULL;
+        g_origFirestormAzureGetTranslateUrl = NULL;
+        return false;
+    }
+
+    g_liveLanguageHooksInstalled.store(true);
+    LogMsg("Live language hooks installed: HUD pair can bypass Preferences OK for this session");
+    return true;
 }
 
 // Structural (register/offset-independent) scan for the TranslateChat gate,
@@ -217,6 +536,13 @@ static bool GetMainModuleTextSection(BYTE*& textBase, size_t& textSize) {
 // every Firestorm release compiled with this code shape without needing a
 // new signature per release. Unknown/future layouts still fail closed: if
 // the shape isn't found (exactly once), no bytes are touched.
+//
+// Firestorm 7.2.5.81788 moved chat.mSourceType to a small stack offset
+// (0x20), so MSVC emitted the short disp8 encoding of the same compare:
+//   83 7D dd 00                                  cmp  dword [rbp+disp8], 0
+// Both encodings are accepted below. Verified against all six release
+// builds (7.1.11, 7.1.13, 7.2.2, 7.2.3, 7.2.4, 7.2.5): each yields exactly
+// one match, and the five older builds match the same address as before.
 static bool InstallAvatarOnlyLocalChatPatch() {
     if (g_avatarOnlyPatchInstalled.load()) return true;
 
@@ -228,8 +554,8 @@ static bool InstallAvatarOnlyLocalChatPatch() {
     }
 
     struct StructuralMatch {
-        BYTE* cmpSourceTypeAddr; // start of "83 BD dd dd dd dd 00" (chat.mSourceType != CHAT_SOURCE_SYSTEM)
-        int32_t stackOffset;     // the disp32 in that cmp, for logging only
+        BYTE* immediateAddr;     // the "00" immediate of the mSourceType compare, followed by "0F 84"
+        int32_t stackOffset;     // the displacement in that cmp, for logging only
     };
 
     std::vector<StructuralMatch> hits;
@@ -253,17 +579,27 @@ static bool InstallAvatarOnlyLocalChatPatch() {
             if (textBase[p2] != 0x0F || textBase[p2 + 1] != 0x84) continue;
 
             size_t p3 = p2 + 6;
-            // 4) cmp dword [rbp+disp32], 0 -> 83 BD dd dd dd dd 00
-            if (textBase[p3] != 0x83 || textBase[p3 + 1] != 0xBD) continue;
-            if (textBase[p3 + 6] != 0x00) continue;
-
-            size_t p4 = p3 + 7;
-            // 5) je rel32 (falls through to the translate call when both branches are not taken)
-            if (textBase[p4] != 0x0F || textBase[p4 + 1] != 0x84) continue;
-
+            // 4) cmp dword [rbp+disp], 0 -- either encoding:
+            //    83 BD dd dd dd dd 00  (disp32, Firestorm 7.1.11 - 7.2.4)
+            //    83 7D dd 00           (disp8,  Firestorm 7.2.5)
+            if (textBase[p3] != 0x83) continue;
+            size_t imm = 0;
             int32_t stackOff = 0;
-            memcpy(&stackOff, textBase + p3 + 2, sizeof(stackOff));
-            hits.push_back({ textBase + p3, stackOff });
+            if (textBase[p3 + 1] == 0xBD) {
+                imm = p3 + 6;
+                memcpy(&stackOff, textBase + p3 + 2, sizeof(stackOff));
+            } else if (textBase[p3 + 1] == 0x7D) {
+                imm = p3 + 3;
+                stackOff = (int8_t)textBase[p3 + 2];
+            } else {
+                continue;
+            }
+            if (textBase[imm] != 0x00) continue;
+
+            // 5) je rel32 (falls through to the translate call when both branches are not taken)
+            if (textBase[imm + 1] != 0x0F || textBase[imm + 2] != 0x84) continue;
+
+            hits.push_back({ textBase + imm, stackOff });
         }
     }
 
@@ -275,8 +611,8 @@ static bool InstallAvatarOnlyLocalChatPatch() {
         return false;
     }
 
-    // The matched instruction is "83 BD <disp32> 00" (7 bytes): cmp dword
-    // [rbp+disp32], 0. Byte +6 is the compared immediate (0x00); flipping it
+    // The matched instruction is "83 BD <disp32> 00" or "83 7D <disp8> 00":
+    // cmp dword [rbp+disp], 0. Its last byte is the compared immediate (0x00); flipping it
     // to 0x01 turns the condition into "chat.mSourceType != CHAT_SOURCE_SYSTEM"
     // (unpatched, translates everything but system messages) into effectively
     // "chat.mSourceType != CHAT_SOURCE_AGENT" is NOT what we want here --
@@ -284,7 +620,7 @@ static bool InstallAvatarOnlyLocalChatPatch() {
     // following je→jne, exactly mirroring the original 7.2.4-only patch:
     //   before: 00 0F 84  (cmp ...,0 ; je skip)   -> only source==0 (SYSTEM) skips
     //   after:  01 0F 85  (cmp ...,1 ; jne skip)  -> only source==1 (AGENT) proceeds
-    BYTE* patchAddress = hits[0].cmpSourceTypeAddr + 6; // points at the "00" immediate, followed by "0F 84"
+    BYTE* patchAddress = hits[0].immediateAddr; // points at the "00" immediate, followed by "0F 84"
     static const BYTE expected[3] = { 0x00, 0x0F, 0x84 };
     static const BYTE replacement[3] = { 0x01, 0x0F, 0x85 };
     if (memcmp(patchAddress, expected, sizeof(expected)) != 0) {
@@ -482,7 +818,11 @@ static void InitOverlay() {
 // ==========================================
 // Debug log
 // ==========================================
+#ifdef SLT_DEBUG_BUILD
+static std::atomic<bool> g_debugLog(true);  // DEBUG BUILD: logging on from startup
+#else
 static std::atomic<bool> g_debugLog(false); // Enable with /tr debug
+#endif
 
 void LogMsg(const char* msg) {
     if (!g_debugLog.load()) return;
@@ -717,8 +1057,8 @@ static std::string GenerateSessionId() {
 // License verify
 // ==========================================
 static int VerifyLicense(const std::string& key, const std::string& hwid) {
-    std::string sessionId, targetLang;
-    { std::lock_guard<std::mutex> lock(g_configMutex); sessionId = g_sessionId; targetLang = g_targetLang; }
+    std::string sessionId, targetLang, myLang;
+    { std::lock_guard<std::mutex> lock(g_configMutex); sessionId = g_sessionId; targetLang = g_targetLang; myLang = g_myLang; }
 
     std::lock_guard<std::recursive_mutex> requestLock(g_httpConnMutex);
     if (!EnsureHttpConnection()) return 0;
@@ -728,27 +1068,24 @@ static int VerifyLicense(const std::string& key, const std::string& hwid) {
     DWORD timeout = 10000;
     WinHttpSetTimeouts(hRequest, timeout, timeout, timeout, timeout);
 
-    // avatar_uuid dropped (17 Eyl): it never affected any server-side
-    // decision, only appeared in conflict-log lines, so it was pure wasted
-    // bytes + a UUID-extraction/lock cost on every request for no behavior
-    // change.
-    // dll_version: lets the server/admin see which client version each
-    // user is actually running (update-adoption visibility), without
-    // needing any Firestorm UI access — the DLL can't reach Firestorm's
-    // own widget tree to display this locally.
-    // target_lang: the "Send Messages In" selection, read from settings.xml
-    // (AzureTranslateAPIKey.endpoint). This is the single explicit signal
-    // for which language the user's own outgoing chat/IM should be
-    // translated into — the server no longer infers it from the separate
-    // /azure/{lang}/ incoming-translation URL, since that URL carries "My
-    // Language" (what the user wants to read), a different setting that
-    // was getting silently conflated with this one (22 Eyl). Omitted
-    // entirely if we can't parse a language code, so the server just keeps
-    // whatever target it already has on file.
+    // avatar_uuid is optional and omitted until UseCircuitCode/AgentUpdate
+    // yields a real agent ID. Existing licences keep working if the server
+    // ignores an unknown field; new licences can bind on first sight.
+    std::string avatarUuid = GetOwnAgentUuidString();
     std::string body = "{\"license_key\":\"" + key + "\",\"hwid\":\"" + hwid +
         "\",\"session_id\":\"" + sessionId + "\",\"dll_version\":\"" SLT_VERSION "\"";
     if (!targetLang.empty()) {
         body += ",\"target_lang\":\"" + targetLang + "\"";
+    }
+    // "My Language" (what the user reads). target_lang + my_lang together are
+    // the language pair the translation model keys on. Sent on every verify so
+    // the server always has the current pair the moment the user picks it in
+    // the Translate menu and presses Save & Apply (which re-verifies).
+    if (!myLang.empty()) {
+        body += ",\"my_lang\":\"" + myLang + "\"";
+    }
+    if (!avatarUuid.empty()) {
+        body += ",\"avatar_uuid\":\"" + avatarUuid + "\"";
     }
     // The verify itself establishes licence validity, so report the desired
     // checkbox + command state rather than the pre-verify effective state
@@ -756,6 +1093,10 @@ static int VerifyLicense(const std::string& key, const std::string& hwid) {
     body += std::string(",\"translation_active\":") +
         (g_active.load() && g_userEnabled.load() ? "true" : "false");
     body += "}";
+
+#ifdef SLT_DEBUG_BUILD
+    LogMsg(("VERIFY_BODY: " + body).c_str());
+#endif
 
     bool sendOk = WinHttpSendRequest(hRequest, L"Content-Type: application/json\r\n", (DWORD)-1L,
         (LPVOID)body.c_str(), (DWORD)body.size(), (DWORD)body.size(), 0) &&
@@ -961,11 +1302,167 @@ static std::string HttpTranslate(const std::string& text) {
 }
 
 // ==========================================
-// SL packet IDs
+// SL UDP decoder (see sl_packet.h)
 // ==========================================
-static const unsigned char CHAT_MSG_ID[] = { 0xFF, 0xFF, 0x00, 0x50 };
-static const unsigned char IM_MSG_ID[] = { 0xFF, 0xFF, 0x00, 0x01 };
-static const unsigned char CHAT_FROM_SIM_MSG_ID[] = { 0xFF, 0xFF, 0x00, 0x8B };
+using UuidBytes = slpacket::Uuid;
+using SlPacketView = slpacket::PacketView;
+using ChatFromSimulatorView = slpacket::ChatFromSimulatorView;
+
+static const uint16_t SL_MSG_USE_CIRCUIT_CODE = slpacket::kMsgUseCircuitCode;
+static const uint16_t SL_MSG_IMPROVED_IM = slpacket::kMsgImprovedInstantMessage;
+
+static std::mutex g_avatarIdMutex;
+static UuidBytes g_ownAgentId{};
+static std::atomic<bool> g_ownAgentIdKnown(false);
+static std::atomic<bool> g_ownAgentIdLogged(false);
+
+static bool IsZeroUuid(const UuidBytes& id) {
+    return slpacket::IsZeroUuid(id);
+}
+
+static std::string UuidToString(const UuidBytes& id) {
+    char out[37] = {};
+    sprintf_s(out, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7],
+        id[8], id[9], id[10], id[11], id[12], id[13], id[14], id[15]);
+    return out;
+}
+
+static bool DecodeSlPacket(const char* buf, int len, SlPacketView& out) {
+    return slpacket::DecodePacket(buf, len, out);
+}
+
+static bool PacketMatchesLow(const SlPacketView& packet, uint16_t messageNumber) {
+    return slpacket::MatchesLow(packet, messageNumber);
+}
+
+static bool CopyUuidFromDecoded(const SlPacketView& packet, size_t bodyRelativeOffset, UuidBytes& uuid) {
+    return slpacket::CopyUuid(packet, bodyRelativeOffset, uuid);
+}
+
+static bool TryExtractOwnAgentUuid(const SlPacketView& packet, UuidBytes& uuid) {
+    return slpacket::TryExtractOwnAgentUuid(packet, uuid);
+}
+
+static bool NoteOwnAgentUuid(const UuidBytes& uuid, const char* source) {
+    if (IsZeroUuid(uuid)) return false;
+
+    bool first = false;
+    bool mismatch = false;
+    UuidBytes previous{};
+    {
+        std::lock_guard<std::mutex> lock(g_avatarIdMutex);
+        if (!g_ownAgentIdKnown.load()) {
+            g_ownAgentId = uuid;
+            g_ownAgentIdKnown.store(true);
+            first = true;
+        } else if (g_ownAgentId != uuid) {
+            previous = g_ownAgentId;
+            mismatch = true;
+        }
+    }
+
+    if (first && !g_ownAgentIdLogged.exchange(true)) {
+        LogMsg((std::string("Own avatar UUID from ") + source + ": " + UuidToString(uuid)).c_str());
+    } else if (mismatch) {
+        LogMsg((std::string("Own avatar UUID mismatch from ") + source +
+                " have=" + UuidToString(previous) +
+                " saw=" + UuidToString(uuid)).c_str());
+    }
+    return first || !mismatch;
+}
+
+static std::atomic<bool> g_sessionInWorld(false);
+
+// Called once per Firestorm session when the avatar finishes entering the
+// world (CompleteAgentMovement) and when a LogoutRequest is seen. For now
+// these only track local session state; the server-side UUID binding
+// (plan.md Faz 1) will later consume these boundaries.
+static void OnSessionLogin() {
+    g_sessionInWorld.store(true);
+}
+
+static void OnSessionLogout() {
+    g_sessionInWorld.store(false);
+}
+
+static void ObserveOutgoingAgentIdentity(const char* buf, int len) {
+    SlPacketView packet;
+    if (!DecodeSlPacket(buf, len, packet)) return;
+#ifdef SLT_DEBUG_BUILD
+    // Debug build: log every decoded outgoing packet (freq + message number)
+    // exactly once per distinct (freq,number) so we can see, on first launch,
+    // which packets carry the avatar UUID and when they first appear.
+    {
+        static std::mutex s_seenMutex;
+        static std::set<uint32_t> s_seen;
+        uint32_t key = (uint32_t(packet.frequency) << 16) | packet.messageNumber;
+        bool firstTime = false;
+        {
+            std::lock_guard<std::mutex> lk(s_seenMutex);
+            firstTime = s_seen.insert(key).second;
+        }
+        if (firstTime) {
+            const char* freq = packet.frequency == slpacket::Frequency::High ? "High"
+                : packet.frequency == slpacket::Frequency::Medium ? "Medium" : "Low";
+            char line[160];
+            sprintf_s(line, "PKT_FIRST_SEEN freq=%s num=%u flags=0x%02X len=%d",
+                freq, (unsigned)packet.messageNumber, (unsigned)packet.flags, len);
+            LogMsg(line);
+        }
+    }
+#endif
+    UuidBytes uuid{};
+    if (!::TryExtractOwnAgentUuid(packet, uuid)) {
+        // Session-state signals that do not themselves carry our UUID:
+        //   CompleteAgentMovement (Low 249) -> login finished, avatar is in-world
+        //   LogoutRequest         (Low 252) -> user is leaving
+        // These fire once each; used so the server can know session boundaries.
+        if (PacketMatchesLow(packet, 249)) {
+            static std::atomic<bool> s_loginLogged(false);
+            if (!s_loginLogged.exchange(true)) {
+                LogMsg("SESSION_LOGIN: CompleteAgentMovement seen (user entered world)");
+                OnSessionLogin();
+            }
+        } else if (PacketMatchesLow(packet, 252)) {
+            static std::atomic<bool> s_logoutLogged(false);
+            if (!s_logoutLogged.exchange(true)) {
+                LogMsg("SESSION_LOGOUT: LogoutRequest seen (user leaving)");
+                OnSessionLogout();
+            }
+        }
+        return;
+    }
+    const char* source = PacketMatchesLow(packet, SL_MSG_USE_CIRCUIT_CODE)
+        ? "UseCircuitCode" : "AgentUpdate";
+    NoteOwnAgentUuid(uuid, source);
+}
+
+static bool GetOwnAgentUuid(UuidBytes& uuid) {
+    std::lock_guard<std::mutex> lock(g_avatarIdMutex);
+    if (!g_ownAgentIdKnown.load()) return false;
+    uuid = g_ownAgentId;
+    return true;
+}
+
+static std::string GetOwnAgentUuidString() {
+    UuidBytes uuid{};
+    if (!GetOwnAgentUuid(uuid)) return "";
+    return UuidToString(uuid);
+}
+
+static bool ExtractChatFromViewer(const SlPacketView& packet, std::string& message, int& channel) {
+    slpacket::ChatFromViewerView chat;
+    if (!slpacket::ExtractChatFromViewer(packet, chat)) return false;
+    if (!IsZeroUuid(chat.agentId)) NoteOwnAgentUuid(chat.agentId, "ChatFromViewer");
+    message = std::move(chat.message);
+    channel = chat.channel;
+    return true;
+}
+
+static bool ExtractChatFromSimulator(const SlPacketView& packet, ChatFromSimulatorView& out) {
+    return slpacket::ExtractChatFromSimulator(packet, out);
+}
 
 static const DWORD OBJECT_CHAT_CACHE_TTL_MS = 20000;
 static const size_t OBJECT_CHAT_CACHE_MAX = 64;
@@ -978,8 +1475,6 @@ static std::deque<std::pair<std::string, DWORD>> g_objectChatCache;
 // which is indistinguishable from ordinary HUD/game output if we only inspect
 // SourceType. Learn the relay identity automatically from ChatSpread's own
 // connection notice and keep it in RAM for this Firestorm session only.
-using UuidBytes = std::array<unsigned char, 16>;
-
 struct TrustedChatSpreadIdentity {
     UuidBytes sourceId{};
     UuidBytes ownerId{};
@@ -990,19 +1485,6 @@ static const DWORD CHATSPREAD_IDENTITY_TTL_MS = 12 * 60 * 60 * 1000; // session 
 static const size_t CHATSPREAD_IDENTITY_MAX = 8;
 static std::mutex g_chatSpreadMutex;
 static std::deque<TrustedChatSpreadIdentity> g_chatSpreadIdentities;
-
-static bool IsZeroUuid(const UuidBytes& id) {
-    for (unsigned char b : id) if (b != 0) return false;
-    return true;
-}
-
-static std::string UuidToString(const UuidBytes& id) {
-    char out[37] = {};
-    sprintf_s(out, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-        id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7],
-        id[8], id[9], id[10], id[11], id[12], id[13], id[14], id[15]);
-    return out;
-}
 
 static std::string LowerAscii(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -1287,9 +1769,24 @@ HINTERNET WINAPI Hooked_WinHttpOpenRequest(HINTERNET hConnect, LPCWSTR verb, LPC
         // Check if this is our Azure endpoint
         std::string urlStr(narrow);
         if (urlStr.find("/azure/") != std::string::npos) {
-            // Diagnostic only: written solely when the user enabled
-            // "/tr debug". Nothing is logged locally while debug is off.
-            LogMsg(("AZURE_REQUEST_SEEN_BY_HOOK: " + std::string(narrow)).c_str());
+            // Force-write unconditionally (regardless of g_debugLog). This
+            // is the one piece of evidence that actually distinguishes the
+            // two competing explanations for "/tr off didn't stop server
+            // traffic": either (a) Firestorm's Azure request reached this
+            // hook and BLOCKED-Firestorm-azure-request below fired but
+            // nobody saw it because debug was off, or (b) this hook was
+            // never called for that request at all because Firestorm's
+            // "Translate Chat" networking bypasses WinHTTP (e.g. goes
+            // through its embedded libcurl stack instead, the same
+            // suspicion noted for the avatar-only local-chat patch). If
+            // the server shows an /azure/ hit with zero matching line here,
+            // that proves (b) and this whole interception approach cannot
+            // work regardless of the g_active check added below.
+            char tmp[MAX_PATH];
+            GetTempPathA(MAX_PATH, tmp);
+            std::string logPath = std::string(tmp) + "slt_debug.log";
+            std::ofstream f(logPath, std::ios::app);
+            f << "AZURE_REQUEST_SEEN_BY_HOOK: " << narrow << std::endl;
             // Extract language from URL: /azure/XX/translate
             size_t azurePos = urlStr.find("/azure/");
             size_t langStart = azurePos + 7; // after "/azure/"
@@ -1334,7 +1831,16 @@ BOOL WINAPI Hooked_WinHttpSendRequest(HINTERNET hRequest, LPCWSTR headers, DWORD
                 // without touching Firestorm's internals at all.
                 if (!IsTranslationEnabled()) {
                     blockRequest = true;
-                    LogMsg("AZURE_REQUEST_BLOCKED (/tr off active)");
+                    // Force-write: same reasoning as AZURE_REQUEST_SEEN_BY_HOOK
+                    // above — this must be visible even when debug is off, to
+                    // prove the block actually fired rather than silently
+                    // not happening. LogMsg() alone would be swallowed
+                    // whenever g_debugLog is false.
+                    char tmp[MAX_PATH];
+                    GetTempPathA(MAX_PATH, tmp);
+                    std::string logPath = std::string(tmp) + "slt_debug.log";
+                    std::ofstream f(logPath, std::ios::app);
+                    f << "AZURE_REQUEST_BLOCKED (/tr off active)" << std::endl;
                 } else {
                     inspectAzureBody = true;
                 }
@@ -1491,49 +1997,20 @@ static bool ProcessTrCommand(const std::string& cmdRaw);
 
 static void InspectChatFromSimulatorPacket(char* buf, int len) {
     if (!buf || len < 10) return;
-    if (memcmp(buf + 6, CHAT_FROM_SIM_MSG_ID, 4) != 0) return;
 
-    // Firestorm's authoritative message_template.msg defines
-    // ChatFromSimulator as Unencoded. Fail closed if a malformed/unexpected
-    // zero-coded packet claims this message ID instead of guessing raw offsets.
-    if (((unsigned char)buf[0] & 0x80) != 0) {
-        LogMsg("recvfrom ChatFromSim: unexpected zero-coded packet; no filtering applied");
-        return;
-    }
+    SlPacketView packet;
+    if (!DecodeSlPacket(buf, len, packet)) return;
 
-    size_t pos = 10;
-    if (pos >= (size_t)len) return;
+    ChatFromSimulatorView chat;
+    if (!::ExtractChatFromSimulator(packet, chat)) return;
 
-    unsigned int fromNameLen = (unsigned char)buf[pos++];
-    if (fromNameLen == 0 || pos + fromNameLen > (size_t)len) return;
-    std::string fromName(buf + pos, buf + pos + fromNameLen);
-    if (!fromName.empty() && fromName.back() == '\0') fromName.pop_back();
-    pos += fromNameLen;
-
-    // SourceID + OwnerID + SourceType + ChatType + Audible + Position +
-    // Message length prefix must all be present before reading any field.
-    const size_t fixedTail = 16 + 16 + 1 + 1 + 1 + 12 + 2;
-    if (pos + fixedTail > (size_t)len) return;
-
-    UuidBytes sourceId{};
-    UuidBytes ownerId{};
-    memcpy(sourceId.data(), buf + pos, sourceId.size());
-    pos += sourceId.size();
-    memcpy(ownerId.data(), buf + pos, ownerId.size());
-    pos += ownerId.size();
-
-    size_t sourceTypeRawPos = pos;
-    unsigned char sourceType = (unsigned char)buf[pos++];
-    unsigned char chatType = (unsigned char)buf[pos++];
-    unsigned char audible = (unsigned char)buf[pos++];
-    pos += 12; // Position
-
-    unsigned int messageLen = (unsigned char)buf[pos] | ((unsigned int)(unsigned char)buf[pos + 1] << 8);
-    pos += 2;
-    if (messageLen == 0 || pos + messageLen > (size_t)len) return;
-    std::string message(buf + pos, buf + pos + messageLen);
-    if (!message.empty() && message.back() == '\0') message.pop_back();
-    std::string normalized = NormalizeChatText(message);
+    std::string fromName = chat.fromName;
+    UuidBytes sourceId = chat.sourceId;
+    UuidBytes ownerId = chat.ownerId;
+    unsigned char sourceType = chat.sourceType;
+    unsigned char chatType = chat.chatType;
+    unsigned char audible = chat.audible;
+    std::string normalized = NormalizeChatText(chat.message);
 
     // HUD remote control: a script-attached HUD can send "/tr on|off|..."
     // via llOwnerSay(). llOwnerSay is only ever delivered to the object's
@@ -1570,15 +2047,18 @@ static void InspectChatFromSimulatorPacket(char* buf, int len) {
         } else if (connected) {
             LearnChatSpreadIdentity(sourceId, ownerId);
         } else if (IsTrustedChatSpreadIdentity(sourceId, ownerId)) {
-            // SourceType is a non-zero byte, so even in a zero-coded packet it
-            // occupies one real raw byte at sourceTypeRawPos. Reclassifying the
-            // trusted relay as CHAT_SOURCE_AGENT lets the version-gated
-            // Firestorm avatar-only branch translate it while unrelated object
-            // packets remain CHAT_SOURCE_OBJECT and are still bypassed.
-            if (sourceTypeRawPos < (size_t)len &&
-                (unsigned char)buf[sourceTypeRawPos] == 2) {
-                buf[sourceTypeRawPos] = 1;
-                promotedChatSpreadRelay = true;
+            // Reclassify only when SourceType occupies a real raw byte at a
+            // known offset. ChatFromSimulator is Unencoded, so after ACK
+            // stripping the decoded offset maps directly onto the wire.
+            // Never rewrite a zero-coded datagram: the raw stream is a
+            // compressed encoding, not the logical field layout.
+            if ((packet.flags & 0x80) == 0) {
+                size_t sourceTypeRawPos = 6 + chat.sourceTypeDecodedOffset;
+                if (sourceTypeRawPos < packet.datagramDataEnd &&
+                    (unsigned char)buf[sourceTypeRawPos] == 2) {
+                    buf[sourceTypeRawPos] = 1;
+                    promotedChatSpreadRelay = true;
+                }
             }
         }
     }
@@ -1605,33 +2085,14 @@ static void InspectChatFromSimulatorPacket(char* buf, int len) {
 // ==========================================
 static bool TryBuildTranslatedChatFromViewer(const char* buf, int len, std::vector<char>& outPkt) {
     if (!buf || len < 50) return false;
-    if (memcmp(buf + 6, CHAT_MSG_ID, 4) != 0) return false;
 
-    // ChatFromViewer is defined "Zerocoded" in the SL message template, and
-    // Firestorm's own compressMessage() sets the 0x80 header flag whenever
-    // zero-coding actually shrinks the packet (rare for chat text, which has
-    // few/no raw 0x00 bytes, but not impossible). This function reads the
-    // msgLen field and text at fixed raw offsets (42/44), which is only
-    // correct for a non-zero-coded packet. Rather than mis-parse a
-    // zero-coded packet (which could corrupt the outgoing message or crash
-    // on bad offsets), bail out and let the original untranslated packet
-    // through unmodified — better to occasionally miss a translation than
-    // to ever send a malformed chat packet.
-    if (((unsigned char)buf[0] & 0x80) != 0) {
-        LogMsg("CHAT: packet is zero-coded, skipping translation (fixed-offset parser doesn't handle this)");
-        return false;
-    }
+    SlPacketView packet;
+    if (!DecodeSlPacket(buf, len, packet)) return false;
 
-    unsigned short msgLen = *(unsigned short*)(buf + 42);
-    // Message is followed by a required ChatType byte and S32 channel.
-    if (msgLen <= 1 || 44 + msgLen + 1 + 4 > len) return false;
-
-    const char* chatText = buf + 44;
-    int textLen = msgLen - 1;
-    int channel = *(int*)(buf + 44 + msgLen + 1);
-    if (channel != 0 || textLen <= 1 || chatText[0] == '/') return false;
-
-    std::string original(chatText, textLen);
+    std::string original;
+    int channel = 0;
+    if (!ExtractChatFromViewer(packet, original, channel)) return false;
+    if (channel != 0 || original.size() <= 1 || original[0] == '/') return false;
     if (ContainsUrl(original)) return false;
 
     std::string translated = HttpTranslate(original);
@@ -1654,16 +2115,33 @@ static bool TryBuildTranslatedChatFromViewer(const char* buf, int len, std::vect
         return false;
     }
 
+    // Rewrite only uncompressed ChatFromViewer datagrams. Zero-coded packets
+    // are decoded for identity/command inspection, but rewriting them would
+    // require a matching encoder and risks a malformed send. Extra-header
+    // packets are likewise left untouched.
+    if ((packet.flags & 0x80) != 0 || packet.extraHeaderLength != 0) {
+        LogMsg("CHAT: decoded a zero-coded/extra-header packet, skipping rewrite");
+        return false;
+    }
+
+    size_t messageOffset = 6 + packet.bodyOffset + 32; // skip AgentID + SessionID
+    if (messageOffset + 2 >= packet.datagramDataEnd) return false;
+    unsigned short oldMsgLen = (unsigned short)(
+        (unsigned char)buf[messageOffset] |
+        ((unsigned char)buf[messageOffset + 1] << 8));
+    if (oldMsgLen <= 1 || messageOffset + 2 + oldMsgLen + 1 + 4 > packet.datagramDataEnd) return false;
+
     int newMsgLen = (int)translated.length() + 1;
-    int newPktLen = 44 + newMsgLen + (len - 44 - msgLen);
+    size_t remainStart = messageOffset + 2 + oldMsgLen;
+    size_t remainLen = (size_t)len - remainStart;
+    size_t newPktLen = messageOffset + 2 + (size_t)newMsgLen + remainLen;
     outPkt.assign(newPktLen, 0);
-    memcpy(outPkt.data(), buf, 42);
-    *(unsigned short*)(outPkt.data() + 42) = (unsigned short)newMsgLen;
-    memcpy(outPkt.data() + 44, translated.c_str(), translated.length());
-    outPkt[44 + translated.length()] = 0;
-    int remainStart = 44 + msgLen;
-    int remainLen = len - remainStart;
-    if (remainLen > 0) memcpy(outPkt.data() + 44 + newMsgLen, buf + remainStart, remainLen);
+    memcpy(outPkt.data(), buf, messageOffset);
+    outPkt[messageOffset] = (char)(newMsgLen & 0xFF);
+    outPkt[messageOffset + 1] = (char)((newMsgLen >> 8) & 0xFF);
+    memcpy(outPkt.data() + messageOffset + 2, translated.c_str(), translated.length());
+    outPkt[messageOffset + 2 + translated.length()] = 0;
+    if (remainLen > 0) memcpy(outPkt.data() + messageOffset + 2 + newMsgLen, buf + remainStart, remainLen);
     return true;
 }
 
@@ -1672,11 +2150,26 @@ static bool TryBuildTranslatedChatFromViewer(const char* buf, int len, std::vect
 // ==========================================
 static bool TryBuildTranslatedImprovedInstantMessage(const char* buf, int len, std::vector<char>& outPkt) {
     if (!buf || len < 80) return false;
-    if (memcmp(buf + 6, IM_MSG_ID, 4) != 0) return false;
-    if ((unsigned char)buf[10] != 0xFE) return false;
 
-    StreamReader reader(buf, len);
-    reader.SetRawPos(11);
+    SlPacketView packet;
+    if (!DecodeSlPacket(buf, len, packet)) return false;
+    if (!PacketMatchesLow(packet, SL_MSG_IMPROVED_IM)) return false;
+
+    UuidBytes agentId{};
+    if (CopyUuidFromDecoded(packet, 0, agentId))
+        NoteOwnAgentUuid(agentId, "ImprovedInstantMessage");
+
+    // Extra headers shift the raw field layout. Decode for identity, but do
+    // not rewrite those rare packets. Zero-coded packets with an ACK trailer
+    // also fail closed: StreamReader cannot tell compressed payload from the
+    // appended ACK list.
+    if (packet.extraHeaderLength != 0) return false;
+    if ((packet.flags & slpacket::kAckFlag) != 0 &&
+        (packet.flags & slpacket::kZeroCodeFlag) != 0) return false;
+
+    StreamReader reader(buf, (int)packet.datagramDataEnd);
+    reader.SetRawPos(6);
+    for (size_t i = 0; i < packet.messageNameLength; ++i) reader.ReadByte();
     reader.Skip(16); // AgentID
     reader.Skip(16); // SessionID
     reader.Skip(1);  // FromGroup
@@ -1927,24 +2420,32 @@ static void CheckSettingsXmlUpdate() {
     // same endpoint value does not trigger a spurious re-verify.
     std::string endpoint = ReadXmlValue(content, "AzureTranslateAPIKey", "endpoint");
     std::string parsedTarget = ParseTargetLangFromEndpoint(endpoint);
-    if (!parsedTarget.empty()) {
+    // "My Language" (what I read) lives in a separate setting, TranslateLanguage.
+    std::string parsedMyLang = ReadXmlValue(content, "TranslateLanguage", "Value");
+    if (!g_runtimeLanguageOverride.load(std::memory_order_acquire)) {
         bool changed = false;
         {
             std::lock_guard<std::mutex> lock(g_configMutex);
-            if (parsedTarget != g_targetLang) {
+            if (!parsedTarget.empty() && parsedTarget != g_targetLang) {
                 g_targetLang = parsedTarget;
+                changed = true;
+            }
+            if (!parsedMyLang.empty() && parsedMyLang != g_myLang) {
+                g_myLang = parsedMyLang;
                 changed = true;
             }
         }
         if (changed) {
-            LogMsg(("Settings: target_lang changed to " + parsedTarget + ", re-verifying").c_str());
+            LogMsg(("Settings: language pair changed (my=" + parsedMyLang +
+                    " target=" + parsedTarget + "), re-verifying").c_str());
             std::string keySnapshot, hwidSnapshot;
             {
                 std::lock_guard<std::mutex> lock(g_configMutex);
                 keySnapshot = g_licenseKey;
                 hwidSnapshot = g_hwid;
             }
-            if (!keySnapshot.empty() && !hwidSnapshot.empty()) {
+            if ((!keySnapshot.empty() && !hwidSnapshot.empty()) ||
+                !GetOwnAgentUuidString().empty()) {
                 // Off the hot path: sendto() must not block on a network
                 // round-trip. VerifyLicense() opens its own request on the
                 // shared persistent connection, which is mutex-guarded, so
@@ -1999,6 +2500,28 @@ static void CheckSettingsXmlUpdate() {
     }
 }
 
+static void ReverifyCurrentLanguagePairAsync(const char* reason) {
+    std::string keySnapshot, hwidSnapshot;
+    {
+        std::lock_guard<std::mutex> lock(g_configMutex);
+        keySnapshot = g_licenseKey;
+        hwidSnapshot = g_hwid;
+    }
+
+    std::string avatarSnapshot = GetOwnAgentUuidString();
+    if ((keySnapshot.empty() || hwidSnapshot.empty()) && avatarSnapshot.empty()) {
+        LogMsg("Language pair verify deferred: neither legacy key identity nor avatar UUID is available yet");
+        return;
+    }
+
+    std::string reasonSnapshot = reason ? reason : "language pair change";
+    std::thread([keySnapshot, hwidSnapshot, reasonSnapshot]() {
+        if (g_shutdown.load()) return;
+        LogMsg((reasonSnapshot + ": sending UUID + language pair verify").c_str());
+        VerifyLicense(keySnapshot, hwidSnapshot);
+    }).detach();
+}
+
 // ==========================================
 // Shared /tr command handler
 // ==========================================
@@ -2022,10 +2545,58 @@ static bool ProcessTrCommand(const std::string& cmdRaw) {
         ? std::string()
         : cmdRaw.substr(trimStart, trimEnd - trimStart + 1);
     std::string cmdLower = LowerAscii(cmdTrimmed);
-    // Diagnostic only: logged solely when "/tr debug" is enabled.
-    LogMsg(("TR_CMD received: raw='" + cmdRaw + "' normalized='" + cmdLower + "'").c_str());
+    // Force-write every /tr command attempt to the log unconditionally
+    // (regardless of g_debugLog), with the raw and normalized text side by
+    // side. Recognized/unrecognized outcome and g_active before/after are
+    // reported by the branches below, but if debug happens to be OFF when
+    // the user runs "/tr off", the rest of this function's LogMsg() calls
+    // are silently dropped — leaving zero evidence in slt_debug.log that
+    // the command was even received. That gap made a real "/tr off doesn't
+    // reliably take effect" report impossible to diagnose from the log.
+    {
+        char tmp[MAX_PATH];
+        GetTempPathA(MAX_PATH, tmp);
+        std::string path = std::string(tmp) + "slt_debug.log";
+        std::ofstream f(path, std::ios::app);
+        f << "TR_CMD received: raw='" << cmdRaw << "' normalized='" << cmdLower << "'" << std::endl;
+    }
     bool recognized = true;
-    if (cmdLower == "/tr off") {
+    if (cmdLower == "/tr lang auto") {
+        g_runtimeLanguageOverride.store(false, std::memory_order_release);
+        // Force the next settings check to consume the on-disk pair even if
+        // Firestorm has not rewritten settings.xml since the HUD override.
+        g_settingsModTime = 0;
+        CheckSettingsXmlUpdate();
+        LogMsg("HUD language override cleared; using Firestorm settings.xml again");
+        ReverifyCurrentLanguagePairAsync("HUD language auto");
+    } else if (cmdLower == "/tr lang" || cmdLower.rfind("/tr lang ", 0) == 0) {
+        std::istringstream words(cmdLower.size() > 9 ? cmdLower.substr(9) : std::string());
+        std::string myRaw, targetRaw, extra;
+        std::string myLanguage, targetLanguage;
+        bool valid = (words >> myRaw >> targetRaw) && !(words >> extra) &&
+            NormalizeTwoLetterLanguageCode(myRaw, myLanguage) &&
+            NormalizeTwoLetterLanguageCode(targetRaw, targetLanguage);
+
+        if (!valid) {
+            LogMsg("Invalid HUD language command; expected: /tr lang <my> <target> (example: /tr lang tr en)");
+        } else {
+            {
+                std::lock_guard<std::mutex> lock(g_configMutex);
+                g_myLang = myLanguage;
+                g_targetLang = targetLanguage;
+            }
+            g_languageOverrideGeneration.fetch_add(1);
+            g_runtimeLanguageOverride.store(true, std::memory_order_release);
+
+            std::string state = "HUD language pair active: my=" + myLanguage +
+                " target=" + targetLanguage;
+            if (!g_liveLanguageHooksInstalled.load()) {
+                state += " (server verify active, Firestorm live hooks unavailable)";
+            }
+            LogMsg(state.c_str());
+            ReverifyCurrentLanguagePairAsync("HUD language verify");
+        }
+    } else if (cmdLower == "/tr off") {
         g_userEnabled.store(false);
         LogMsg("Translation command switch OFF");
         UpdateOverlayStatus(false);
@@ -2074,20 +2645,35 @@ static bool ProcessTrCommand(const std::string& cmdRaw) {
         // sprintf_s reads its .c_str() pointer below (dangling-pointer bug),
         // so materialize it into a named std::string that outlives the call.
         std::string daysLeftStr = daysLeft >= 0 ? std::to_string(daysLeft) : std::string("unknown");
-        char st[300];
+        char st[560];
         std::string keySnapshot;
-        { std::lock_guard<std::mutex> lock(g_configMutex); keySnapshot = g_licenseKey; }
-        sprintf_s(st, "SLT: %s (checkbox=%s command=%s license=%s includeOriginal=%s) | Key: %.8s... | Days left: %s",
+        std::string myLanguage, targetLanguage;
+        {
+            std::lock_guard<std::mutex> lock(g_configMutex);
+            keySnapshot = g_licenseKey;
+            myLanguage = g_myLang;
+            targetLanguage = g_targetLang;
+        }
+        std::string avatarSnapshot = GetOwnAgentUuidString();
+        if (avatarSnapshot.empty()) avatarSnapshot = "unknown";
+        sprintf_s(st, "SLT: %s (checkbox=%s command=%s license=%s includeOriginal=%s) | Pair: %s>%s (%s, hooks=%s) | Key: %.8s... | Days left: %s | UUID: %s",
             isOn ? "ON" : "OFF",
             g_active.load() ? "1" : "0",
             g_userEnabled.load() ? "1" : "0",
             g_licenseValid.load() ? "1" : "0",
             g_includeOriginal.load() ? "1" : "0",
+            myLanguage.c_str(), targetLanguage.c_str(),
+            g_runtimeLanguageOverride.load() ? "HUD" : "settings",
+            g_liveLanguageHooksInstalled.load() ? "ready" : "missing",
             keySnapshot.c_str(),
-            daysLeftStr.c_str());
-        // Status is shown in-world via the overlay; the log copy is written
-        // only when "/tr debug" is enabled.
-        LogMsg(st);
+            daysLeftStr.c_str(),
+            avatarSnapshot.c_str());
+        // Always write status to log too, regardless of debug flag.
+        char tmp[MAX_PATH];
+        GetTempPathA(MAX_PATH, tmp);
+        std::string path = std::string(tmp) + "slt_debug.log";
+        std::ofstream f(path, std::ios::app);
+        f << st << std::endl;
 
         UpdateOverlayStatus(isOn);
     } else {
@@ -2104,35 +2690,31 @@ static bool ProcessTrCommand(const std::string& cmdRaw) {
 // ==========================================
 int WSAAPI Hooked_sendto(SOCKET s, const char* buf, int len, int flags, const struct sockaddr* to, int tolen) {
     CheckSettingsXmlUpdate();
+    ObserveOutgoingAgentIdentity(buf, len);
 
     // /tr chat commands must always be reachable, even when g_active is
     // false (e.g. user never pressed Save & Apply in the settings floater,
     // or a heartbeat/verify failure turned translation off). This block
     // runs BEFORE the g_active gate below so the commands can actually
     // flip g_active themselves.
-    if (buf && len >= 50 && ((unsigned char)buf[0] & 0x80) == 0 &&
-        memcmp(buf + 6, CHAT_MSG_ID, 4) == 0) {
-        unsigned short cmdMsgLen = *(unsigned short*)(buf + 42);
-        if (cmdMsgLen > 1 && 44 + cmdMsgLen + 1 + 4 <= len) {
-            const char* cmdChatText = buf + 44;
-            int cmdTextLen = cmdMsgLen - 1;
-            int cmdChannel = *(int*)(buf + 44 + cmdMsgLen + 1);
-
-            if (cmdChannel == 0 && cmdTextLen >= 3 && strncmp(cmdChatText, "/tr", 3) == 0) {
-                std::string cmd(cmdChatText, cmdTextLen);
-                bool recognized = ProcessTrCommand(cmd);
-                if (recognized) {
-                    // Recognized /tr commands are for the local client only —
-                    // never let them reach the sim/chat, so nobody else sees
-                    // "/tr on" typed in local chat and the message doesn't
-                    // get routed through Firestorm's own translation path.
-                    return len;
-                }
-                // Fall through: not a real /tr command, let it continue as
-                // a normal chat message (translated if active, same as any
-                // other text).
+    if (buf && len >= 10) {
+        SlPacketView packet;
+        std::string cmdText;
+        int cmdChannel = 0;
+        if (DecodeSlPacket(buf, len, packet) &&
+            ExtractChatFromViewer(packet, cmdText, cmdChannel) &&
+            cmdChannel == 0 && cmdText.size() >= 3 && strncmp(cmdText.c_str(), "/tr", 3) == 0) {
+            bool recognized = ProcessTrCommand(cmdText);
+            if (recognized) {
+                // Recognized /tr commands are for the local client only —
+                // never let them reach the sim/chat, so nobody else sees
+                // "/tr on" typed in local chat and the message doesn't
+                // get routed through Firestorm's own translation path.
+                return len;
             }
-
+            // Fall through: not a real /tr command, let it continue as
+            // a normal chat message (translated if active, same as any
+            // other text).
         }
     }
 
@@ -2140,25 +2722,25 @@ int WSAAPI Hooked_sendto(SOCKET s, const char* buf, int len, int flags, const st
         return g_origSendTo(s, buf, len, flags, to, tolen);
 
     // ChatFromViewer
-    if (((unsigned char)buf[0] & 0x80) == 0 && memcmp(buf + 6, CHAT_MSG_ID, 4) == 0) {
-        unsigned short msgLen = *(unsigned short*)(buf + 42);
-        if (msgLen > 1 && 44 + msgLen + 1 + 4 <= len) {
-            const char* chatText = buf + 44;
-            int textLen = msgLen - 1;
-            int channel = *(int*)(buf + 44 + msgLen + 1);
-
-            // Translate chat
-            if (channel == 0 && textLen > 0 && chatText[0] != '/' && g_userEnabled.load()) {
-                LogMsg(("CHAT: " + std::string(chatText, textLen)).c_str());
-                StartSendWorker();
-                if (EnqueueSendTo(s, buf, len, flags, to, tolen)) return len;
-            }
+    {
+        SlPacketView packet;
+        std::string chatText;
+        int channel = 0;
+        if (DecodeSlPacket(buf, len, packet) &&
+            ExtractChatFromViewer(packet, chatText, channel) &&
+            channel == 0 && !chatText.empty() && chatText[0] != '/' && g_userEnabled.load()) {
+            LogMsg(("CHAT: " + chatText).c_str());
+            StartSendWorker();
+            if (EnqueueSendTo(s, buf, len, flags, to, tolen)) return len;
         }
     }
 
     // ImprovedInstantMessage
-    if (memcmp(buf + 6, IM_MSG_ID, 4) == 0 && len > 80 && (unsigned char)buf[10] == 0xFE) {
-        if (g_userEnabled.load()) {
+    {
+        SlPacketView packet;
+        if (DecodeSlPacket(buf, len, packet) &&
+            PacketMatchesLow(packet, SL_MSG_IMPROVED_IM) &&
+            g_userEnabled.load()) {
             StartSendWorker();
             if (EnqueueSendTo(s, buf, len, flags, to, tolen)) return len;
         }
@@ -2226,7 +2808,14 @@ static void CheckForUpdate() {
 
     LogMsg(("Current: " + std::string(SLT_VERSION) + " Latest: " + latestVersion).c_str());
 
-    if (latestVersion == SLT_VERSION) { LogMsg("Up to date"); return; }
+    // Only offer an update when the remote version is STRICTLY NEWER than the
+    // running one. Never prompt for an equal or older ("downgrade") version.
+    auto parseVer = [](const std::string& v) {
+        int a = 0, b = 0, c = 0;
+        sscanf_s(v.c_str(), "%d.%d.%d", &a, &b, &c);
+        return (a * 1000000) + (b * 1000) + c;
+    };
+    if (parseVer(latestVersion) <= parseVer(SLT_VERSION)) { LogMsg("Up to date"); return; }
 
     // Find download URL (browser_download_url)
     size_t urlPos = result.find("browser_download_url");
@@ -2324,20 +2913,6 @@ static void CheckForUpdate() {
 
     LogMsg(("Installer downloaded to: " + installerPath).c_str());
 
-    // TODO(code-signing): Verify the downloaded installer before running it.
-    //
-    // Official releases will be Authenticode-signed (see CODE_SIGNING.md).
-    // Once the signing certificate is issued, this step must:
-    //   1. call WinVerifyTrust() on installerPath and require a valid,
-    //      timestamped signature chained to a trusted root;
-    //   2. require the signer subject to match the official publisher
-    //      identity published in CODE_SIGNING.md;
-    //   3. delete the file and abort the update if either check fails.
-    //
-    // Until then the update is only offered after explicit user consent
-    // (the MessageBox above) and is downloaded over HTTPS from the official
-    // GitHub release of this repository.
-
     // Get Firestorm exe path
     char exePath[MAX_PATH];
     GetModuleFileNameA(NULL, exePath, MAX_PATH);
@@ -2373,91 +2948,11 @@ static void InitThread(HMODULE hModule) {
     GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS,
         reinterpret_cast<LPCWSTR>(&InitThread), &pinnedSelf);
 
-    if (!SleepUntilShutdown(5000)) return; // Wait for Firestorm to initialize
     LogMsg("=== SL Translator DLL Init v" SLT_VERSION " ===");
 
-    InitOverlay();
-
-    // Local-only experiment: translate real avatar local chat, but leave
-    // object/HUD/game output untouched. Structural scan (register/offset
-    // independent, verified across Firestorm 7.1.11-7.2.4) makes this
-    // effective on any Firestorm build compiling that C++ shape unchanged;
-    // it fails closed (no bytes touched) on unrecognised builds.
-    InstallAvatarOnlyLocalChatPatch();
-
-    // Check for updates
-    CheckForUpdate();
-
-    std::string initialHwid = GetHWID();
-    std::string initialSession = GenerateSessionId();
-    {
-        std::lock_guard<std::mutex> lock(g_configMutex);
-        g_hwid = initialHwid;
-        g_sessionId = initialSession;
-    }
-    LogMsg(("HWID: " + initialHwid).c_str());
-    LogMsg(("Session: " + initialSession).c_str());
-
-    // Read license key and outgoing language from Firestorm's settings.xml
-    std::string settingsPath = FindFirestormSettings();
-    if (!settingsPath.empty()) {
-        std::ifstream sf(settingsPath);
-        if (sf) {
-            std::string sc((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>());
-            sf.close();
-            std::string initialKey = ReadXmlValue(sc, "AzureTranslateAPIKey", "id");
-            std::string endpoint = ReadXmlValue(sc, "AzureTranslateAPIKey", "endpoint");
-            std::string parsedTarget = ParseTargetLangFromEndpoint(endpoint);
-            g_active.store(ReadTranslateChatEnabled(sc));
-            {
-                std::lock_guard<std::mutex> lock(g_configMutex);
-                g_licenseKey = initialKey;
-                if (!parsedTarget.empty()) g_targetLang = parsedTarget;
-            }
-            if (!parsedTarget.empty()) LogMsg(("Initial target_lang: " + parsedTarget).c_str());
-        }
-    }
-    std::string initialKey;
-    { std::lock_guard<std::mutex> lock(g_configMutex); initialKey = g_licenseKey; }
-    if (initialKey.empty()) {
-        LogMsg("No license key in settings.xml — use SL Translator > Settings to enter key");
-    } else {
-        LogMsg(("License key: " + initialKey).c_str());
-    }
-    // Outgoing language controlled by server
-
-    // Verify license if key found
-    if (!initialKey.empty() && !initialHwid.empty()) {
-        LogMsg("Verifying license...");
-        int result = VerifyLicense(initialKey, initialHwid);
-        if (result == 1) {
-            g_licenseValid.store(true);
-            LogMsg("License OK");
-
-            // Compute remaining days and show it in the window title suffix
-            // (e.g. "[Translate: ON, 12d left]") instead of a popup dialog —
-            // it's visible without interrupting the user, and stays visible
-            // the whole session instead of a one-shot message box.
-            if (g_expires > 0) {
-                FILETIME ft; GetSystemTimeAsFileTime(&ft);
-                long long nowMs = ((long long)ft.dwHighDateTime << 32 | ft.dwLowDateTime) / 10000 - 11644473600000LL;
-                long long remainingMs = g_expires - nowMs;
-                long long remainingDays = remainingMs > 0 ? remainingMs / (24LL * 60 * 60 * 1000) : 0;
-                g_daysRemaining.store(remainingDays);
-                LogMsg(("License days remaining: " + std::to_string(remainingDays)).c_str());
-            }
-
-            UpdateOverlayStatus(IsTranslationEnabled());
-            PushTranslationStatusAsync(IsTranslationEnabled());
-        } else {
-            g_licenseValid.store(false);
-            LogMsg("License verification failed");
-            UpdateOverlayStatus(false);
-            if (result < 0) PushTranslationStatusAsync(false);
-        }
-    }
-
-    // Setup sendto hook
+    // Install UDP hooks immediately so UseCircuitCode (Low 3) and the later
+    // AgentUpdate (High 4) stream can teach us the local avatar UUID. Licence
+    // verify used to run first and therefore always omitted it.
     char buf[512];
     MH_STATUS st = MH_Initialize();
     sprintf_s(buf, "MH_Initialize: %d", st);
@@ -2521,6 +3016,100 @@ static void InitThread(HMODULE hModule) {
     }
 
     LogMsg("=== Hooks active ===");
+
+    // Give Firestorm a few seconds to emit UseCircuitCode / AgentUpdate so
+    // the first licence verify can carry avatar_uuid when it is already known.
+    if (!SleepUntilShutdown(5000)) return;
+
+    InitOverlay();
+
+    // Local-only experiment: translate real avatar local chat, but leave
+    // object/HUD/game output untouched. Structural scan (register/offset
+    // independent, verified across Firestorm 7.1.11-7.2.4) makes this
+    // effective on any Firestorm build compiling that C++ shape unchanged;
+    // it fails closed (no bytes touched) on unrecognised builds.
+    InstallAvatarOnlyLocalChatPatch();
+
+    // Firestorm reads the incoming language and Azure endpoint from its live
+    // control objects, but the Translation floater only writes those controls
+    // when the user presses OK. These fail-closed hooks let a HUD Verify action
+    // apply the selected pair immediately for the current session.
+    InstallFirestormLiveLanguageHooks();
+
+    // Check for updates
+    CheckForUpdate();
+
+    std::string initialHwid = GetHWID();
+    std::string initialSession = GenerateSessionId();
+    {
+        std::lock_guard<std::mutex> lock(g_configMutex);
+        g_hwid = initialHwid;
+        g_sessionId = initialSession;
+    }
+    LogMsg(("HWID: " + initialHwid).c_str());
+    LogMsg(("Session: " + initialSession).c_str());
+
+    // Read license key and outgoing language from Firestorm's settings.xml
+    std::string settingsPath = FindFirestormSettings();
+    if (!settingsPath.empty()) {
+        std::ifstream sf(settingsPath);
+        if (sf) {
+            std::string sc((std::istreambuf_iterator<char>(sf)), std::istreambuf_iterator<char>());
+            sf.close();
+            std::string initialKey = ReadXmlValue(sc, "AzureTranslateAPIKey", "id");
+            std::string endpoint = ReadXmlValue(sc, "AzureTranslateAPIKey", "endpoint");
+            std::string parsedTarget = ParseTargetLangFromEndpoint(endpoint);
+            std::string parsedMyLang = ReadXmlValue(sc, "TranslateLanguage", "Value");
+            g_active.store(ReadTranslateChatEnabled(sc));
+            {
+                std::lock_guard<std::mutex> lock(g_configMutex);
+                g_licenseKey = initialKey;
+                if (!parsedTarget.empty()) g_targetLang = parsedTarget;
+                if (!parsedMyLang.empty()) g_myLang = parsedMyLang;
+            }
+            if (!parsedTarget.empty() || !parsedMyLang.empty())
+                LogMsg(("Initial language pair: my=" + parsedMyLang + " target=" + parsedTarget).c_str());
+        }
+    }
+    std::string initialKey;
+    { std::lock_guard<std::mutex> lock(g_configMutex); initialKey = g_licenseKey; }
+    if (initialKey.empty()) {
+        LogMsg("No license key in settings.xml — use SL Translator > Settings to enter key");
+    } else {
+        LogMsg(("License key: " + initialKey).c_str());
+    }
+    // Outgoing language controlled by server
+
+    // Verify license if key found
+    if (!initialKey.empty() && !initialHwid.empty()) {
+        LogMsg("Verifying license...");
+        int result = VerifyLicense(initialKey, initialHwid);
+        if (result == 1) {
+            g_licenseValid.store(true);
+            LogMsg("License OK");
+
+            // Compute remaining days and show it in the window title suffix
+            // (e.g. "[Translate: ON, 12d left]") instead of a popup dialog —
+            // it's visible without interrupting the user, and stays visible
+            // the whole session instead of a one-shot message box.
+            if (g_expires > 0) {
+                FILETIME ft; GetSystemTimeAsFileTime(&ft);
+                long long nowMs = ((long long)ft.dwHighDateTime << 32 | ft.dwLowDateTime) / 10000 - 11644473600000LL;
+                long long remainingMs = g_expires - nowMs;
+                long long remainingDays = remainingMs > 0 ? remainingMs / (24LL * 60 * 60 * 1000) : 0;
+                g_daysRemaining.store(remainingDays);
+                LogMsg(("License days remaining: " + std::to_string(remainingDays)).c_str());
+            }
+
+            UpdateOverlayStatus(IsTranslationEnabled());
+            PushTranslationStatusAsync(IsTranslationEnabled());
+        } else {
+            g_licenseValid.store(false);
+            LogMsg("License verification failed");
+            UpdateOverlayStatus(false);
+            if (result < 0) PushTranslationStatusAsync(false);
+        }
+    }
 
     // Heartbeat thread
     std::thread([]() {
