@@ -13,8 +13,11 @@
 // UUID that Second Life sends with every request (no licence key in the HUD).
 
 // ------------------------------------------------------------ constants
-string TEX_PANEL = "slt_hud_panel";
-string TEX_LANGS = "slt_hud_langs";
+// Paste the texture UUIDs here (right click the texture in inventory >
+// Copy Asset UUID). With UUIDs the textures do not have to be inside the
+// object. If left as names, both textures must be in the object's Content.
+string TEX_PANEL = "9fdb9d01-8d88-73b9-824a-5ae471803b51"; // slt_hud_panel
+string TEX_LANGS = "2f318b87-1a3e-695c-ccbb-156596c62075"; // slt_hud_langs
 string STATUS_URL = "https://api.sltranslate.com/api/hud/status";
 
 // 32 languages, same order as the slt_hud_langs atlas (4 columns x 8 rows).
@@ -290,8 +293,18 @@ integer CheckFace(integer link, integer touched)
     return FALSE;
 }
 
+// Warn early when a texture is neither a UUID nor present in Content.
+CheckTexture(string tex)
+{
+    if ((key)tex) return;
+    if (llGetInventoryType(tex) == INVENTORY_TEXTURE) return;
+    Note("texture '" + tex + "' not found. Put it in Content or paste its UUID at the top of the script.");
+}
+
 Setup()
 {
+    CheckTexture(TEX_PANEL);
+    CheckTexture(TEX_LANGS);
     FindLinks();
     integer n = llGetNumberOfPrims();
     if (n >= 4 && (!gLinkMy || !gLinkSend || !gLinkPick))
