@@ -137,6 +137,7 @@ static bool SleepUntilShutdown(DWORD totalMs) {
 // before that section in this file, so it needs a forward declaration here.
 void LogMsg(const char* msg);
 static std::string GetOwnAgentUuidString();
+static void ReverifyCurrentLanguagePairAsync(const char* reason);
 
 static bool NormalizeTwoLetterLanguageCode(const std::string& raw, std::string& normalized) {
     if (raw.size() != 2) return false;
@@ -1369,6 +1370,13 @@ static bool NoteOwnAgentUuid(const UuidBytes& uuid, const char* source) {
                 " have=" + UuidToString(previous) +
                 " saw=" + UuidToString(uuid)).c_str());
     }
+    // The startup verify runs before login, so it never carries the avatar
+    // UUID; without this the server would only learn it at the next 5-minute
+    // heartbeat and the HUD STATUS button would say "no license linked"
+    // for up to 5 minutes after login. Runs once per process (first is only
+    // true for the first UUID) and on a detached thread, so the sendto hot
+    // path is not blocked.
+    if (first) ReverifyCurrentLanguagePairAsync("avatar UUID learned");
     return first || !mismatch;
 }
 
