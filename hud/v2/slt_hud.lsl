@@ -138,8 +138,11 @@ ShowBar()
     if (!gOn) row = 2;
     if (gDual) row += 1;
     float v = 0.375 - row * 0.25;
+    // Face colour must be white: SL multiplies colour into the texture, so the
+    // dark navy used for the box sides would make the panel almost black.
     llSetLinkPrimitiveParamsFast(LINK_THIS, [
         PRIM_TEXTURE, FACE, TEX_PANEL, <1.0, 0.25, 0.0>, <0.0, v, 0.0>, 0.0,
+        PRIM_COLOR, FACE, <1.0, 1.0, 1.0>, 1.0,
         PRIM_FULLBRIGHT, FACE, TRUE
     ]);
     ShowCell(gLinkMy, llListFindList(CODES, [gMy]));
