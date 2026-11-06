@@ -1,16 +1,15 @@
 # SL Translator Pro
 
-[![License: GPL v3+](https://img.shields.io/badge/License-GPLv3%2B-blue.svg)](LICENSE)
-[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6.svg)](#building)
+[![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6.svg)](https://github.com/sltranslator-pro/sl-translator-pro/releases/latest)
 [![Latest release](https://img.shields.io/github/v/release/sltranslator-pro/sl-translator-pro)](https://github.com/sltranslator-pro/sl-translator-pro/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/sltranslator-pro/sl-translator-pro/total)](https://github.com/sltranslator-pro/sl-translator-pro/releases)
 
-Free and open-source real-time chat translation integration for the 64-bit Firestorm viewer used with Second Life.
+Real-time chat translation integration for the 64-bit Firestorm viewer used with Second Life.
 
 ## Status
 
-- The client, installer and Firestorm UI integration in this repository are free software under GPL-3.0-or-later. They are free to download, use, modify and redistribute.
-- Translation is performed by a separately operated hosted service. Access to that service is provided separately from this repository; the client software itself is never sold.
+- Official Windows installers are published on the Releases page.
+- Translation is performed by a separately operated hosted service.
 - The project is not affiliated with Linden Lab or the Firestorm Viewer project.
 
 ## Features
@@ -19,60 +18,12 @@ Free and open-source real-time chat translation integration for the 64-bit Fires
 - Outgoing local chat and instant-message translation
 - Firestorm settings and menu integration
 - Separate incoming and outgoing language selection
-- Local enable/disable and status commands
-- Automatic update notification
+- Local enable/disable, status and manual licence verification commands
 - 64-bit Windows support
-
-## Repository layout
-
-```text
-src/dinput8.cpp                 Windows client DLL
-installer/installer.nsi        NSIS installer definition
-installer/patch.ps1            Firestorm UI integration helper
-installer/skins/               Firestorm XUI overrides
-third_party/minhook/            MinHook dependency (BSD-2-Clause)
-build.bat                       Reproducible MSVC x64 build
-PRIVACY.md                      Data-processing disclosure
-```
-
-## Building
-
-### Requirements
-
-- Windows 10 or Windows 11, 64-bit
-- Visual Studio 2022 with **Desktop development with C++**
-- Windows 10/11 SDK
-- NSIS 3.x, only if building the installer
-
-### Build the DLL
-
-Run from a regular command prompt:
-
-```bat
-build.bat
-```
-
-The script locates the Visual Studio x64 toolchain and writes:
-
-```text
-dist\dinput8.dll
-```
-
-### Build the installer
-
-After building the DLL:
-
-```bat
-"C:\Program Files (x86)\NSIS\makensis.exe" installer\installer.nsi
-```
-
-The installer is written to `dist\SLTranslatorPro_Setup_vX.Y.Z.exe`.
 
 ## Installation
 
-For normal use, download an official package from the [Releases](https://github.com/sltranslator-pro/sl-translator-pro/releases/latest) page. Close Firestorm before running the installer.
-
-This project installs a proxy `dinput8.dll` next to the Firestorm executable. Windows security policies may block unsigned builds. Prefer official, digitally signed releases when available.
+Download the official installer from the [Releases](https://github.com/sltranslator-pro/sl-translator-pro/releases/latest) page. Close Firestorm before running `SLTranslatorPro_Setup.exe`.
 
 ### What the installer changes
 
@@ -82,7 +33,7 @@ This project installs a proxy `dinput8.dll` next to the Firestorm executable. Wi
 
 ### Uninstall
 
-Remove **SL Translator Pro** from **Settings → Apps → Installed apps**, or run `SLTranslator_Uninstall.exe` in the Firestorm folder. The uninstaller removes the DLL and restores any backed-up `dinput8.dll`. To stop translation without uninstalling, use `/tr off`.
+Remove **SL Translator Pro** from **Settings → Apps → Installed apps**, or run `SLTranslator_Uninstall.exe` in the Firestorm folder. To stop translation without uninstalling, use `/tr off`.
 
 ## Privacy
 
@@ -90,11 +41,10 @@ The client does not store chat history or logs on your computer. A local diagnos
 
 ## Code signing policy
 
-Official Windows releases are built from this repository and signed with an Authenticode code signing certificate issued by Certum (Asseco Data Systems S.A.) to the project maintainer. Current releases are unsigned until the certificate is issued.
+Official Windows releases are signed with an Authenticode code signing certificate issued by Certum (Asseco Data Systems S.A.) to the project maintainer.
 
-- Signed artifacts: `dinput8.dll` and the `SLTranslatorPro_Setup_vX.Y.Z.exe` installer
+- Signed artifacts: `dinput8.dll` and the installer
 - Signatures use SHA-256 with an RFC 3161 timestamp
-- Signing keys are held in a cloud HSM and never stored in this repository
 - Privacy policy: [PRIVACY.md](PRIVACY.md), shown during installation
 
 See [CODE_SIGNING.md](CODE_SIGNING.md) for verification steps.
@@ -106,12 +56,6 @@ See [CODE_SIGNING.md](CODE_SIGNING.md) for verification steps.
 - Report vulnerabilities privately to `info@sltranslate.com`.
 
 See [SECURITY.md](SECURITY.md) for the security policy.
-
-## License
-
-SL Translator Pro client code is licensed under the **GNU General Public License, version 3 or later**. See [LICENSE](LICENSE).
-
-MinHook is distributed under its own BSD-2-Clause license. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Contact
 
