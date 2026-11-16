@@ -1,0 +1,28 @@
+# Build outputs
+build/
+dist/
+*.obj
+*.exp
+*.lib
+*.pdb
+*.ilk
+*.log
+*.dll
+*.exe
+
+# Local and personal files
+setings.txt
+settings.xml
+license.json
+*.backup*
+*.bak
+*.full_backup
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+.DS_Store
+Thumbs.db

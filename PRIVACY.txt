@@ -1,0 +1,30 @@
+SL TRANSLATOR PRO - PRIVACY NOTICE AND TERMS
+Last updated: October 23, 2026
+
+SL Translator Pro is free and open-source client software for Firestorm.
+
+ON YOUR COMPUTER
+The client stores nothing during normal use: no chat history and no message log.
+If you turn on the optional /tr debug command, a diagnostic log is written to
+%TEMP%\slt_debug.log and can include translated messages. Turn debug off to stop it.
+
+SENT FOR TRANSLATION (to api.sltranslate.com over HTTPS)
+- The message text and the target language
+- Your license key, client version and a temporary session identifier
+- Whether translation is on or off
+- A device identifier derived from Windows MachineGuid, used to bind your free key to one computer
+
+The translation service uses the message text only to produce the translation and does not store it.
+It does not forward your messages to Google, Microsoft, OpenAI or DeepL.
+The client also contacts GitHub to check for updates.
+
+TERMS
+- The software and service are free and provided "as is", without warranty.
+- Translation accuracy and availability are not guaranteed.
+- Do not use the service for spam, abuse or illegal activity.
+- License keys may be disabled to protect the service from abuse.
+
+Full details: https://github.com/sltranslator-pro/sl-translator-pro/blob/main/PRIVACY.md
+Contact: info@sltranslate.com | Ulasilmaz Winslet in Second Life
+
+By continuing, you accept this notice and these terms.
